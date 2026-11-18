@@ -1,0 +1,40 @@
+{
+  "accuracy": 1.0,
+  "precision_macro": 1.0,
+  "recall_macro": 1.0,
+  "macro_f1": 1.0,
+  "precision_weighted": 1.0,
+  "recall_weighted": 1.0,
+  "weighted_f1": 1.0,
+  "roc_auc": 1.0,
+  "pr_auc": 1.0,
+  "expected_calibration_error": 0.004947485258946066,
+  "support": [
+    52,
+    52
+  ],
+  "per_class_precision": [
+    1.0,
+    1.0
+  ],
+  "per_class_recall": [
+    1.0,
+    1.0
+  ],
+  "per_class_f1": [
+    1.0,
+    1.0
+  ],
+  "confusion_matrix": [
+    [
+      52,
+      0
+    ],
+    [
+      0,
+      52
+    ]
+  ],
+  "count": 104,
+  "loss": 0.1944174404655184
+}

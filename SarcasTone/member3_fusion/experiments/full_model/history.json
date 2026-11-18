@@ -1,0 +1,446 @@
+{
+  "train": [
+    {
+      "accuracy": 0.8381742738589212,
+      "precision_macro": 0.8382674588822872,
+      "recall_macro": 0.8381742738589212,
+      "macro_f1": 0.8381631282607572,
+      "precision_weighted": 0.838267458882287,
+      "recall_weighted": 0.8381742738589212,
+      "weighted_f1": 0.8381631282607572,
+      "roc_auc": 0.9137067199256211,
+      "pr_auc": 0.9179562897360662,
+      "expected_calibration_error": 0.06480207309683332,
+      "support": [
+        241,
+        241
+      ],
+      "per_class_precision": [
+        0.8326530612244898,
+        0.8438818565400844
+      ],
+      "per_class_recall": [
+        0.8464730290456431,
+        0.8298755186721992
+      ],
+      "per_class_f1": [
+        0.8395061728395061,
+        0.8368200836820083
+      ],
+      "confusion_matrix": [
+        [
+          204,
+          37
+        ],
+        [
+          41,
+          200
+        ]
+      ],
+      "count": 482,
+      "loss": 0.45204560506728386
+    },
+    {
+      "accuracy": 0.975103734439834,
+      "precision_macro": 0.975136456772905,
+      "recall_macro": 0.975103734439834,
+      "macro_f1": 0.9751033057851239,
+      "precision_weighted": 0.975136456772905,
+      "recall_weighted": 0.975103734439834,
+      "weighted_f1": 0.9751033057851239,
+      "roc_auc": 0.9980372238769993,
+      "pr_auc": 0.9980123746199058,
+      "expected_calibration_error": 0.02546428323286701,
+      "support": [
+        241,
+        241
+      ],
+      "per_class_precision": [
+        0.9711934156378601,
+        0.9790794979079498
+      ],
+      "per_class_recall": [
+        0.979253112033195,
+        0.970954356846473
+      ],
+      "per_class_f1": [
+        0.9752066115702479,
+        0.975
+      ],
+      "confusion_matrix": [
+        [
+          236,
+          5
+        ],
+        [
+          7,
+          234
+        ]
+      ],
+      "count": 482,
+      "loss": 0.18023742879590682
+    },
+    {
+      "accuracy": 0.9937759336099585,
+      "precision_macro": 0.993784435261708,
+      "recall_macro": 0.9937759336099585,
+      "macro_f1": 0.9937759068193851,
+      "precision_weighted": 0.993784435261708,
+      "recall_weighted": 0.9937759336099585,
+      "weighted_f1": 0.9937759068193851,
+      "roc_auc": 0.9999483479967631,
+      "pr_auc": 0.9999483474038797,
+      "expected_calibration_error": 0.030476401702991637,
+      "support": [
+        241,
+        241
+      ],
+      "per_class_precision": [
+        0.9917355371900827,
+        0.9958333333333333
+      ],
+      "per_class_recall": [
+        0.995850622406639,
+        0.991701244813278
+      ],
+      "per_class_f1": [
+        0.9937888198757764,
+        0.9937629937629938
+      ],
+      "confusion_matrix": [
+        [
+          240,
+          1
+        ],
+        [
+          2,
+          239
+        ]
+      ],
+      "count": 482,
+      "loss": 0.1472446192656794
+    },
+    {
+      "accuracy": 1.0,
+      "precision_macro": 1.0,
+      "recall_macro": 1.0,
+      "macro_f1": 1.0,
+      "precision_weighted": 1.0,
+      "recall_weighted": 1.0,
+      "weighted_f1": 1.0,
+      "roc_auc": 1.0,
+      "pr_auc": 1.0,
+      "expected_calibration_error": 0.029551827190327985,
+      "support": [
+        241,
+        241
+      ],
+      "per_class_precision": [
+        1.0,
+        1.0
+      ],
+      "per_class_recall": [
+        1.0,
+        1.0
+      ],
+      "per_class_f1": [
+        1.0,
+        1.0
+      ],
+      "confusion_matrix": [
+        [
+          241,
+          0
+        ],
+        [
+          0,
+          241
+        ]
+      ],
+      "count": 482,
+      "loss": 0.13344503915117634
+    },
+    {
+      "accuracy": 0.9979253112033195,
+      "precision_macro": 0.9979338842975207,
+      "recall_macro": 0.9979253112033195,
+      "macro_f1": 0.9979253022731284,
+      "precision_weighted": 0.9979338842975206,
+      "recall_weighted": 0.9979253112033195,
+      "weighted_f1": 0.9979253022731283,
+      "roc_auc": 1.0,
+      "pr_auc": 1.0,
+      "expected_calibration_error": 0.027917969894607087,
+      "support": [
+        241,
+        241
+      ],
+      "per_class_precision": [
+        1.0,
+        0.9958677685950413
+      ],
+      "per_class_recall": [
+        0.995850622406639,
+        1.0
+      ],
+      "per_class_f1": [
+        0.997920997920998,
+        0.9979296066252588
+      ],
+      "confusion_matrix": [
+        [
+          240,
+          1
+        ],
+        [
+          0,
+          241
+        ]
+      ],
+      "count": 482,
+      "loss": 0.12955907924521354
+    }
+  ],
+  "val": [
+    {
+      "accuracy": 1.0,
+      "precision_macro": 1.0,
+      "recall_macro": 1.0,
+      "macro_f1": 1.0,
+      "precision_weighted": 1.0,
+      "recall_weighted": 1.0,
+      "weighted_f1": 1.0,
+      "roc_auc": 1.0,
+      "pr_auc": 1.0,
+      "expected_calibration_error": 0.0049850614025042286,
+      "support": [
+        52,
+        52
+      ],
+      "per_class_precision": [
+        1.0,
+        1.0
+      ],
+      "per_class_recall": [
+        1.0,
+        1.0
+      ],
+      "per_class_f1": [
+        1.0,
+        1.0
+      ],
+      "confusion_matrix": [
+        [
+          52,
+          0
+        ],
+        [
+          0,
+          52
+        ]
+      ],
+      "count": 104,
+      "loss": 0.19442042921270644
+    },
+    {
+      "accuracy": 1.0,
+      "precision_macro": 1.0,
+      "recall_macro": 1.0,
+      "macro_f1": 1.0,
+      "precision_weighted": 1.0,
+      "recall_weighted": 1.0,
+      "weighted_f1": 1.0,
+      "roc_auc": 1.0,
+      "pr_auc": 1.0,
+      "expected_calibration_error": 0.012853531883313118,
+      "support": [
+        52,
+        52
+      ],
+      "per_class_precision": [
+        1.0,
+        1.0
+      ],
+      "per_class_recall": [
+        1.0,
+        1.0
+      ],
+      "per_class_f1": [
+        1.0,
+        1.0
+      ],
+      "confusion_matrix": [
+        [
+          52,
+          0
+        ],
+        [
+          0,
+          52
+        ]
+      ],
+      "count": 104,
+      "loss": 0.13689585668700083
+    },
+    {
+      "accuracy": 1.0,
+      "precision_macro": 1.0,
+      "recall_macro": 1.0,
+      "macro_f1": 1.0,
+      "precision_weighted": 1.0,
+      "recall_weighted": 1.0,
+      "weighted_f1": 1.0,
+      "roc_auc": 1.0,
+      "pr_auc": 1.0,
+      "expected_calibration_error": 0.00838737820203489,
+      "support": [
+        52,
+        52
+      ],
+      "per_class_precision": [
+        1.0,
+        1.0
+      ],
+      "per_class_recall": [
+        1.0,
+        1.0
+      ],
+      "per_class_f1": [
+        1.0,
+        1.0
+      ],
+      "confusion_matrix": [
+        [
+          52,
+          0
+        ],
+        [
+          0,
+          52
+        ]
+      ],
+      "count": 104,
+      "loss": 0.1361242958477565
+    },
+    {
+      "accuracy": 1.0,
+      "precision_macro": 1.0,
+      "recall_macro": 1.0,
+      "macro_f1": 1.0,
+      "precision_weighted": 1.0,
+      "recall_weighted": 1.0,
+      "weighted_f1": 1.0,
+      "roc_auc": 1.0,
+      "pr_auc": 1.0,
+      "expected_calibration_error": 0.014284675511030017,
+      "support": [
+        52,
+        52
+      ],
+      "per_class_precision": [
+        1.0,
+        1.0
+      ],
+      "per_class_recall": [
+        1.0,
+        1.0
+      ],
+      "per_class_f1": [
+        1.0,
+        1.0
+      ],
+      "confusion_matrix": [
+        [
+          52,
+          0
+        ],
+        [
+          0,
+          52
+        ]
+      ],
+      "count": 104,
+      "loss": 0.12601846882275172
+    },
+    {
+      "accuracy": 1.0,
+      "precision_macro": 1.0,
+      "recall_macro": 1.0,
+      "macro_f1": 1.0,
+      "precision_weighted": 1.0,
+      "recall_weighted": 1.0,
+      "weighted_f1": 1.0,
+      "roc_auc": 1.0,
+      "pr_auc": 1.0,
+      "expected_calibration_error": 0.014471564155358543,
+      "support": [
+        52,
+        52
+      ],
+      "per_class_precision": [
+        1.0,
+        1.0
+      ],
+      "per_class_recall": [
+        1.0,
+        1.0
+      ],
+      "per_class_f1": [
+        1.0,
+        1.0
+      ],
+      "confusion_matrix": [
+        [
+          52,
+          0
+        ],
+        [
+          0,
+          52
+        ]
+      ],
+      "count": 104,
+      "loss": 0.12553709426096507
+    }
+  ],
+  "test": {
+    "accuracy": 1.0,
+    "precision_macro": 1.0,
+    "recall_macro": 1.0,
+    "macro_f1": 1.0,
+    "precision_weighted": 1.0,
+    "recall_weighted": 1.0,
+    "weighted_f1": 1.0,
+    "roc_auc": 1.0,
+    "pr_auc": 1.0,
+    "expected_calibration_error": 0.004947485258946066,
+    "support": [
+      52,
+      52
+    ],
+    "per_class_precision": [
+      1.0,
+      1.0
+    ],
+    "per_class_recall": [
+      1.0,
+      1.0
+    ],
+    "per_class_f1": [
+      1.0,
+      1.0
+    ],
+    "confusion_matrix": [
+      [
+        52,
+        0
+      ],
+      [
+        0,
+        52
+      ]
+    ],
+    "count": 104,
+    "loss": 0.1944174404655184
+  }
+}

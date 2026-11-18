@@ -97,22 +97,49 @@ class MultimodalPipeline:
         self.temperature = float(self.config.get("model", {}).get("temperature", 1.25))
         self.uncertainty_threshold = float(self.config.get("model", {}).get("uncertainty_threshold", 0.55))
 
-        # Check for trained neural checkpoint
+        # Check for trained checkpoints across all members
+        self.text_model = None
+        self.acoustic_model = None
         self.fusion_model = None
-        self._try_load_neural_checkpoint()
+        self._load_trained_models()
 
-    def _try_load_neural_checkpoint(self) -> None:
-        ckpt_dir = REPO_ROOT / self.config.get("model", {}).get("fusion_checkpoint", "member3_fusion/checkpoints/full_model/checkpoint")
-        if (ckpt_dir / "config.json").is_file() and (ckpt_dir / "model.pt").is_file():
+    def _load_trained_models(self) -> None:
+        # 1. Member 1 Text Sarcasm Model
+        m1_path = REPO_ROOT / "member1_text" / "outputs" / "checkpoints" / "text_sarcasm_classifier" / "model.joblib"
+        if m1_path.is_file():
             try:
-                import torch
-                from member3_fusion.src.models.fusion_model import SarcasToneFusionModel
-                device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-                self.fusion_model = SarcasToneFusionModel.load(ckpt_dir, device=device)
-                self.fusion_model.eval()
-                log.info("Loaded trained neural fusion model from %s", ckpt_dir)
+                import joblib
+                self.text_model = joblib.load(m1_path)
+                log.info("Loaded Member 1 text sarcasm model from %s", m1_path)
             except Exception as e:
-                log.warning("Could not load neural checkpoint (%s); using calibrated decision engine.", e)
+                log.warning("Could not load Member 1 text model: %s", e)
+
+        # 2. Member 2 Acoustic Sarcasm Model
+        m2_path = REPO_ROOT / "member2_audio" / "checkpoints" / "sarcasm" / "acoustic_sarcasm_model.joblib"
+        if m2_path.is_file():
+            try:
+                import joblib
+                self.acoustic_model = joblib.load(m2_path)
+                log.info("Loaded Member 2 acoustic sarcasm model from %s", m2_path)
+            except Exception as e:
+                log.warning("Could not load Member 2 acoustic model: %s", e)
+
+        # 3. Member 3 Neural Fusion Model
+        for cand in [
+            REPO_ROOT / "member3_fusion" / "checkpoints" / "full_model",
+            REPO_ROOT / "member3_fusion" / "experiments" / "full_model" / "checkpoint",
+        ]:
+            if (cand / "config.json").is_file() and (cand / "model.pt").is_file():
+                try:
+                    import torch
+                    from member3_fusion.src.models.fusion_model import SarcasToneFusionModel
+                    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+                    self.fusion_model = SarcasToneFusionModel.load(cand, device=device)
+                    self.fusion_model.eval()
+                    log.info("Loaded Member 3 neural fusion model from %s", cand)
+                    break
+                except Exception as e:
+                    log.warning("Could not load Member 3 neural model: %s", e)
 
     def predict(
         self,
@@ -402,66 +429,77 @@ class MultimodalPipeline:
         has_text_neg = any(nw in word_set for nw in _NEGATIVE_SITUATION_WORDS)
 
         # -------------------------------------------------------------
-        # 1. Text Unimodal Logit
+        # 1. Text Unimodal Logit (Trained Member 1 Model)
         # -------------------------------------------------------------
         if not has_text:
             text_logit = 0.0
+            p_text_sarcastic = 0.50
+        elif self.text_model is not None:
+            ctx_str = " ".join(context).strip() if context else ""
+            inp = f"{ctx_str} [SEP] {text.strip()}" if ctx_str else text.strip()
+            probs_t = self.text_model.predict_proba([inp])[0]
+            p_text_sarcastic = float(probs_t[1])
+            p_safe_t = min(max(p_text_sarcastic, 1e-4), 1.0 - 1e-4)
+            text_logit = math.log(p_safe_t / (1.0 - p_safe_t))
         else:
-            # Baseline for ordinary literal sentences is strongly non-sarcastic (-1.8)
+            # Calibrated NLP text fallback
             text_logit = -1.8
-
             if has_strong:
                 text_logit += 2.8
             if praise_matches > 0:
                 if has_ctx_neg or has_text_neg:
-                    # Contrast between praise and negative setting = classic sarcasm
                     text_logit += 2.6
                 elif "!" in text or praise_matches >= 2:
                     text_logit += 1.3
                 else:
-                    # Single polite praise word in neutral setting -> slight uptick
                     text_logit += 0.5
-
             if praise_matches == 0 and not has_strong:
                 text_logit -= 0.4
-
-        p_text_sarcastic = 1.0 / (1.0 + math.exp(-text_logit / self.temperature))
+            p_text_sarcastic = 1.0 / (1.0 + math.exp(-text_logit / self.temperature))
 
         # -------------------------------------------------------------
-        # 2. Audio Unimodal Logit
+        # 2. Audio Unimodal Logit (Trained Member 2 Acoustic Model)
         # -------------------------------------------------------------
         if not has_audio:
             audio_logit = 0.0
+            p_audio_sarcastic = 0.50
+        elif self.acoustic_model is not None and len(prosody_dict) > 0:
+            f0_m = float(prosody_dict.get("f0_mean", 170.0))
+            f0_s = float(prosody_dict.get("f0_std", 25.0))
+            rms_m = float(prosody_dict.get("rms_mean", 0.15))
+            rms_s = float(prosody_dict.get("rms_std", 0.04))
+            sc_m = float(prosody_dict.get("spectral_centroid_mean", 1800.0))
+            sc_s = float(prosody_dict.get("spectral_centroid_std", 450.0))
+            sr_m = float(prosody_dict.get("spectral_rolloff_mean", 3200.0))
+            sr_s = float(prosody_dict.get("spectral_rolloff_std", 700.0))
+            zcr_m = float(prosody_dict.get("zero_crossing_rate_mean", 0.08))
+            zcr_s = float(prosody_dict.get("zero_crossing_rate_std", 0.025))
+            rate = float(prosody_dict.get("speaking_rate_proxy", 4.2))
+            pause = float(prosody_dict.get("pause_ratio", 0.15))
+
+            feat_vec = np.array([[f0_m, f0_s, rms_m, rms_s, sc_m, sc_s, sr_m, sr_s, zcr_m, zcr_s, rate, pause]])
+            probs_a = self.acoustic_model.predict_proba(feat_vec)[0]
+            p_audio_sarcastic = float(probs_a[1])
+            p_safe_a = min(max(p_audio_sarcastic, 1e-4), 1.0 - 1e-4)
+            audio_logit = math.log(p_safe_a / (1.0 - p_safe_a))
         else:
             cv_pitch = float(prosody_dict.get("pitch_variation_coeff", 0.15))
             f0_std = float(prosody_dict.get("f0_std", 25.0))
             energy_dyn = float(prosody_dict.get("energy_dynamic_range_db", 8.0))
-            f0_slope = abs(float(prosody_dict.get("f0_slope", 0.0)))
             speaking_rate = float(prosody_dict.get("speaking_rate_proxy", 4.5))
             pause_ratio = float(prosody_dict.get("pause_ratio", 0.15))
-            emphasis = float(prosody_dict.get("emphasis_proxy", 0.15))
-            f0_mean = float(prosody_dict.get("f0_mean", 150.0))
             intonation_st = float(prosody_dict.get("intonation_range_semitones", 8.0))
 
-            # Calibrated Acoustic Sarcasm Scoring:
-            # Sarcasm markers:
-            # 1. Theatrical / Mocking Sarcasm: high pitch variation + wide intonation range + strong syllable stress
             is_mocking_sarcasm = (cv_pitch > 0.20 and (intonation_st > 9.5 or f0_std > 35.0)) or cv_pitch > 0.26 or intonation_st > 13.0
-            # 2. Deadpan / Monotone Sarcasm: flat pitch (cv_pitch < 0.045 and voiced) + low dynamic range (< 4.5 dB) or slow drawl
             is_deadpan_sarcasm = (0.005 < cv_pitch < 0.045 and energy_dyn < 4.5) or (speaking_rate < 2.2 and cv_pitch < 0.08) or (speaking_rate < 2.8 and pause_ratio > 0.30)
 
             if is_mocking_sarcasm:
-                # Exaggerated sing-song or mocking sarcasm
                 audio_logit = 0.9 + (cv_pitch - 0.20) * 2.0
             elif is_deadpan_sarcasm:
-                # Flat deadpan sarcasm
                 audio_logit = 0.8 + (0.05 - cv_pitch) * 2.0
             else:
-                # Normal calm conversational voice (typical cv_pitch 0.06 - 0.18, intonation < 9.5 st)
-                # Strong literal baseline (-1.6 to -1.2 logit -> 17% - 24% sarcasm)
                 audio_logit = -1.55 + (cv_pitch - 0.12) * 1.5
-
-        p_audio_sarcastic = 1.0 / (1.0 + math.exp(-audio_logit / self.temperature))
+            p_audio_sarcastic = 1.0 / (1.0 + math.exp(-audio_logit / self.temperature))
 
         # -------------------------------------------------------------
         # 3. Multimodal Fused Logit

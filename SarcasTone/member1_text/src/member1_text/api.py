@@ -97,6 +97,28 @@ def predict_text(
     *,
     checkpoint: Path | None = None,
 ) -> dict[str, object]:
+    # 1. Use trained Member 1 text sarcasm classifier if present
+    repo_root = Path(__file__).resolve().parents[3]
+    joblib_ckpt = repo_root / "member1_text" / "outputs" / "checkpoints" / "text_sarcasm_classifier" / "model.joblib"
+    if joblib_ckpt.is_file():
+        try:
+            import joblib
+            import numpy as np
+            model = joblib.load(joblib_ckpt)
+            ctx_str = str(context).strip() if context else ""
+            inp = f"Context: {ctx_str} Utterance: {text.strip()}"
+            probs = model.predict_proba([inp])[0]
+            p_sarcasm = float(probs[1])
+            label = 1 if p_sarcasm >= 0.5 else 0
+            return {
+                "label": label,
+                "probability": p_sarcasm,
+                "probability_sarcasm": p_sarcasm,
+                "logits": [-1.0, 1.0] if label == 1 else [1.0, -1.0],
+            }
+        except Exception:
+            pass
+
     if not HAS_TORCH:
         from member4.backend.pipeline import MultimodalPipeline
         p = MultimodalPipeline()

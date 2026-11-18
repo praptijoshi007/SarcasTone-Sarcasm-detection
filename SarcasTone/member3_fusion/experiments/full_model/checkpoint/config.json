@@ -1,0 +1,22 @@
+{
+  "text_dim": 768,
+  "audio_dim": 768,
+  "context_dim": 768,
+  "prosody_dim": 32,
+  "quality_dim": 6,
+  "acoustic_dim": 13,
+  "fusion_hidden": 512,
+  "cross_attn_heads": 8,
+  "cross_attn_layers": 2,
+  "dropout": 0.3,
+  "classifier_hidden": 256,
+  "num_labels": 2,
+  "psid_proj_dim": 128,
+  "psid_disagree_dim": 128,
+  "temperature_init": 1.0,
+  "fusion_strategy": "cross_attention",
+  "psid_enabled": true,
+  "gating_enabled": true,
+  "text_available": true,
+  "audio_available_default": true
+}

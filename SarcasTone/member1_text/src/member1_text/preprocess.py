@@ -182,3 +182,76 @@ def preprocess_example(
         extra=extra,
         overlap_key=example.overlap_key,
     )
+
+
+# ---------------------------------------------------------------------------
+# Semantic Incongruence & Contrast Feature Transformer (Pickle-Safe)
+# ---------------------------------------------------------------------------
+
+POSITIVE_WORDS = {
+    "good", "great", "brilliant", "fantastic", "wonderful", "amazing", "privilege",
+    "genius", "excellent", "love", "like", "pleasure", "thrilled", "soothing",
+    "perfect", "delightful", "outstanding", "best", "superb", "favorite", "cool",
+    "nice", "beautiful", "pleased", "glad", "happy", "honor", "masterpiece"
+}
+NEGATIVE_WORDS = {
+    "bad", "wrong", "fail", "failed", "failing", "broken", "broke", "crash", "crashed",
+    "delay", "delayed", "error", "bug", "mess", "stupid", "idiot", "worst", "horrible",
+    "awful", "annoying", "boring", "pain", "ruined", "lost", "ugly", "hate", "trouble",
+    "problem", "disaster", "garbage", "sick", "died", "dead", "traffic", "spilled"
+}
+
+IRONY_IDIOMS = [
+    "yeah right", "as if", "no kidding", "big surprise", "who would have thought",
+    "thanks a lot", "thanks for nothing", "what a shocker", "what a genius",
+    "clearly an expert", "sure you did", "sure you do", "oh sure", "totally not",
+    "color me surprised", "color me shocked", "great job breaking", "congratulations on failing",
+    "what an honor", "what a privilege", "groundbreaking discovery", "how wonderful that",
+    "brilliant idea to", "couldn't be better", "just what i needed", "just what we needed",
+    "you're a genius", "such an expert", "privilege to watch"
+]
+
+
+class SemanticContrastExtractor:
+    """Extract linguistic incongruence and lexical irony indicators."""
+
+    def fit(self, X: Any, y: Any = None) -> SemanticContrastExtractor:
+        return self
+
+    def transform(self, X: Any) -> Any:
+        import numpy as np
+        feats = []
+        for s in X:
+            parts = str(s).split(" [SEP] ")
+            ctx = parts[0].lower() if len(parts) > 1 else ""
+            utt = parts[-1].lower()
+
+            u_words = set(re.findall(r"\b[a-z]+\b", utt))
+            c_words = set(re.findall(r"\b[a-z]+\b", ctx))
+
+            u_pos = len(u_words & POSITIVE_WORDS)
+            u_neg = len(u_words & NEGATIVE_WORDS)
+            c_pos = len(c_words & POSITIVE_WORDS)
+            c_neg = len(c_words & NEGATIVE_WORDS)
+
+            # Classic sarcasm: positive praise in negative context
+            contrast_sarc = 1.0 if (u_pos > 0 and c_neg > 0) else 0.0
+            # Literal harmony
+            harmony = 1.0 if ((u_pos > 0 and c_pos > 0) or (u_neg > 0 and c_neg > 0)) else 0.0
+
+            has_excl = 1.0 if "!" in utt else 0.0
+            has_dots = 1.0 if ".." in utt else 0.0
+            has_quotes = 1.0 if ('"' in utt or "'" in utt) else 0.0
+
+            # Idiomatic irony markers
+            full_text = f"{ctx} {utt}"
+            has_idiom = 1.0 if any(idiom in full_text for idiom in IRONY_IDIOMS) else 0.0
+            standalone_contrast = 1.0 if (u_pos > 0 and u_neg > 0) else 0.0
+
+            feats.append([
+                float(u_pos), float(u_neg), float(c_pos), float(c_neg),
+                contrast_sarc, harmony, has_excl, has_dots, has_quotes,
+                has_idiom, standalone_contrast
+            ])
+        return np.array(feats, dtype=np.float32)
+

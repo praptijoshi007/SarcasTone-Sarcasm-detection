@@ -126,7 +126,9 @@ def verify_sync() -> bool:
         from member4.backend.main import app
 
         m4_pipe = MultimodalPipeline()
-        sample_wav = REPO_ROOT / "member2_audio" / "tests" / "fixtures" / "test_sample.wav"
+        sample_wav = REPO_ROOT / "member4" / "fixtures" / "preset_sheldon_sarcastic.wav"
+        if not sample_wav.is_file():
+            sample_wav = REPO_ROOT / "member2_audio" / "tests" / "fixtures" / "test_sample.wav"
 
         m4_res = m4_pipe.predict(
             audio_path=sample_wav if sample_wav.is_file() else None,

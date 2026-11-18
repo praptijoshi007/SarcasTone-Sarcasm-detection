@@ -102,13 +102,12 @@ data:
 
   # Wav2Vec2 pooled embeddings (produced by member2)
   # Set to null to disable and fall back to handoff-CSV columns
-  wav2vec2_embeddings_npz: null    # e.g. "E:/SarcasTone_Embeddings/wav2vec2_embeddings.npz"
+  wav2vec2_embeddings_npz: "member2_audio/outputs/handoff/mustard_wav2vec2_embeddings.npz"
   frame_embeddings_npz: null       # e.g. "E:/SarcasTone_Embeddings/mustard_frame_embeddings.npz"
 
   # Cached member1 text embeddings (.npz) — produced by member1 pre-extraction
   # Keys expected: 'utterance_ids' [N], 'embeddings' [N, 768]
-  # Set to null to use live text_encoder (or zero embeddings in text-unavailable mode)
-  text_embeddings_npz: null        # e.g. "E:/SarcasTone_Embeddings/text_embeddings.npz"
+  text_embeddings_npz: "member1_text/outputs/handoff/mustard_text_embeddings.npz"
 
   # Splits
   val_ratio: 0.15

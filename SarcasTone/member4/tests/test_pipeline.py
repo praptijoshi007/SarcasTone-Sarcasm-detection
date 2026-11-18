@@ -12,7 +12,11 @@ class TestMultimodalPipeline(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.pipeline = MultimodalPipeline()
-        cls.fixture_wav = Path(__file__).resolve().parents[2] / "member2_audio" / "tests" / "fixtures" / "test_sample.wav"
+        sheldon_wav = Path(__file__).resolve().parents[1] / "fixtures" / "preset_sheldon_sarcastic.wav"
+        if sheldon_wav.is_file():
+            cls.fixture_wav = sheldon_wav
+        else:
+            cls.fixture_wav = Path(__file__).resolve().parents[2] / "member2_audio" / "tests" / "fixtures" / "test_sample.wav"
 
     def test_text_only_prediction(self) -> None:
         """Verify text-only inference with positive praise markers."""

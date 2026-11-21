@@ -1,29 +1,29 @@
 {
-  "accuracy": 1.0,
-  "precision_macro": 1.0,
-  "recall_macro": 1.0,
-  "macro_f1": 1.0,
-  "precision_weighted": 1.0,
-  "recall_weighted": 1.0,
-  "weighted_f1": 1.0,
-  "roc_auc": 1.0,
-  "pr_auc": 1.0,
-  "expected_calibration_error": 0.004947485258946066,
+  "accuracy": 0.5,
+  "precision_macro": 0.25,
+  "recall_macro": 0.5,
+  "macro_f1": 0.3333333333333333,
+  "precision_weighted": 0.25,
+  "recall_weighted": 0.5,
+  "weighted_f1": 0.3333333333333333,
+  "roc_auc": 0.5,
+  "pr_auc": 0.5,
+  "expected_calibration_error": 0.27105218172073364,
   "support": [
     52,
     52
   ],
   "per_class_precision": [
-    1.0,
-    1.0
+    0.5,
+    0.0
   ],
   "per_class_recall": [
     1.0,
-    1.0
+    0.0
   ],
   "per_class_f1": [
-    1.0,
-    1.0
+    0.6666666666666666,
+    0.0
   ],
   "confusion_matrix": [
     [
@@ -31,10 +31,10 @@
       0
     ],
     [
-      0,
-      52
+      52,
+      0
     ]
   ],
   "count": 104,
-  "loss": 0.1944174404655184
+  "loss": 0.8671301433018276
 }

@@ -12,7 +12,7 @@ and *how it is said* (acoustic emotion). PSID formalises this as:
     3. Compute learned disagreement vector:
             d  = LayerNorm( |T̂ - Â| )            (element-wise absolute diff)
             d+ = tanh( W_d · concat(T̂, Â, d) )   (non-linear disagreement gate)
-
+py -0p
     4. The disagreement vector d+ is concatenated with the main fusion vector
        for the final classifier.
 

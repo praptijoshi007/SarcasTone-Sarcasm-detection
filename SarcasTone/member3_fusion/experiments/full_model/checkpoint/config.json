@@ -4,7 +4,7 @@
   "context_dim": 768,
   "prosody_dim": 32,
   "quality_dim": 6,
-  "acoustic_dim": 13,
+  "acoustic_dim": 116,
   "fusion_hidden": 512,
   "cross_attn_heads": 8,
   "cross_attn_layers": 2,

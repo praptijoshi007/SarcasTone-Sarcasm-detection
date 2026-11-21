@@ -56,6 +56,7 @@ def export_embeddings(
     contexts = []
     fused_rows = []
     probabilities = []
+    has_context_rows = []
     with torch.no_grad():
         for batch in loader:
             output = model(
@@ -68,6 +69,9 @@ def export_embeddings(
             utterances.append(output["utterance"].detach().float().cpu().numpy())
             contexts.append(output["context"].detach().float().cpu().numpy())
             fused_rows.append(output["fused"].detach().float().cpu().numpy())
+            has_context_rows.append(
+                output["has_context"].detach().view(-1).cpu().numpy().astype(np.bool_)
+            )
             if output["logits"].size(-1) > 1:
                 probs = torch.softmax(output["logits"].detach().float(), dim=-1)[:, 1]
             else:
@@ -84,9 +88,17 @@ def export_embeddings(
         output_path = PACKAGE_ROOT / "outputs" / "eval" / filename
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
+    id_array = np.asarray(ids, dtype=str)
+    has_context = np.concatenate(has_context_rows).astype(np.bool_)
     np.savez(
         destination,
-        ids=np.asarray(ids),
+        # Member 3's documented cache contract.
+        utterance_ids=id_array,
+        embeddings=utterance,
+        context_embeddings=context,
+        has_context=has_context,
+        # Backward-compatible names used by the earlier Member 1 export.
+        ids=id_array,
         utterance=utterance,
         context=context,
         fused=fused,

@@ -255,7 +255,16 @@ Reported numbers come only from `member1_text/outputs/eval/` after the matching 
 
 ### Member 1 handoff
 
-`member1_text/handoff/` contains the RoBERTa five-fold validation report, the TF-IDF baseline report, and the exported MUStARD embeddings (`ids`, `utterance`, `context`, `fused`, and `probability_sarcasm`). Embedding rows are float32 and aligned with `ids`. Both reports are cross-validation results; neither is an independent test result. The trained RoBERTa weight file is about 476 MB and is intentionally not included in the regular GitHub commit. Keep the deployment checkpoint at `outputs/checkpoints/mustard__sarcasm__roberta-base/` locally or share it separately with teammates who need direct inference.
+`member1_text/handoff/` contains the RoBERTa five-fold validation report, the TF-IDF baseline report, and an earlier backward-compatible embedding export. The Member 3 configured cache is `member1_text/outputs/handoff/mustard_text_embeddings.npz`. It contains `utterance_ids` `[N]`, `embeddings` `[N,768]`, `context_embeddings` `[N,768]`, and `has_context` `[N]`, plus the older Member 1 keys. IDs are the original MUStARD utterance IDs. Recreate it with:
+
+```bash
+PYTHONPATH=member1_text/src python -m member1_text.export \
+  --checkpoint member1_text/outputs/checkpoints/mustard__sarcasm__roberta-base \
+  --dataset mustard --task sarcasm \
+  --output member1_text/outputs/handoff/mustard_text_embeddings.npz
+```
+
+Both reports are cross-validation results; neither is an independent test result. The trained RoBERTa weight file is about 476 MB and is intentionally not included in the regular GitHub commit. Keep the deployment checkpoint at `outputs/checkpoints/mustard__sarcasm__roberta-base/` locally or share it separately with teammates who need direct inference.
 
 ## Tests
 

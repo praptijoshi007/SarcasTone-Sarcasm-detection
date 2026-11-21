@@ -243,7 +243,19 @@ A missing checkpoint raises an error. The API does not return a dummy probabilit
 
 TF-IDF plus logistic regression, and a frozen `sentence-transformers/all-MiniLM-L6-v2` linear head, are baselines. They are logged separately. They are not the primary model, and their files are not copied over the RoBERTa checkpoint.
 
+The implemented word+character TF-IDF baseline can be evaluated on MUStARD with:
+
+```bash
+PYTHONPATH=member1_text/src python -m member1_text.baselines
+```
+
+This runs five stratified folds and writes `outputs/eval/mustard__sarcasm/tfidf_baseline_cv.json`. It is a validation estimate, not an independent test score.
+
 Reported numbers come only from `member1_text/outputs/eval/` after the matching command succeeds.
+
+### Member 1 handoff
+
+`member1_text/handoff/` contains the RoBERTa five-fold validation report, the TF-IDF baseline report, and the exported MUStARD embeddings (`ids`, `utterance`, `context`, `fused`, and `probability_sarcasm`). Embedding rows are float32 and aligned with `ids`. Both reports are cross-validation results; neither is an independent test result. The trained RoBERTa weight file is about 476 MB and is intentionally not included in the regular GitHub commit. Keep the deployment checkpoint at `outputs/checkpoints/mustard__sarcasm__roberta-base/` locally or share it separately with teammates who need direct inference.
 
 ## Tests
 

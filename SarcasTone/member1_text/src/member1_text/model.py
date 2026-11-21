@@ -224,7 +224,9 @@ def load_span_model(path: str | Path, device: torch.device | str = "cpu") -> Spa
     payload = _read_config(checkpoint)
     if payload.get("architectures") == ["TfidfLogReg"] or "tfidf" in str(payload.get("model_name", "")):
         raise RuntimeError(f"Checkpoint {checkpoint} is a TF-IDF baseline, not a span-pooling transformer.")
-    encoder_config = AutoConfig.from_dict(payload["encoder_config"])
+    encoder_config_payload = dict(payload["encoder_config"])
+    encoder_model_type = encoder_config_payload.pop("model_type")
+    encoder_config = AutoConfig.for_model(encoder_model_type, **encoder_config_payload)
     encoder = AutoModel.from_config(encoder_config)
     model = SpanPoolingModel(
         encoder,

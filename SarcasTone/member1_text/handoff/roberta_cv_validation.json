@@ -1,0 +1,299 @@
+{
+  "best_fold": 0,
+  "best_fold_validation_macro_f1": 0.7403644573455894,
+  "copy_best_fold_weights": false,
+  "dataset": "mustard",
+  "folds": [
+    {
+      "best_checkpoint": "/Users/aayushinagar/Desktop/NLP_PROJECT/SarcasTone-Sarcasm-detection/SarcasTone/member1_text/outputs/checkpoints/mustard__sarcasm__roberta-base__stratified_5fold/fold-0/checkpoint-5",
+      "best_epoch": 5,
+      "best_score": 0.7403644573455894,
+      "fold": 0,
+      "metrics": {
+        "accuracy": 0.7463768115942029,
+        "classification_report": {
+          "0": {
+            "f1-score": 0.779874213836478,
+            "precision": 0.6888888888888889,
+            "recall": 0.8985507246376812,
+            "support": 69.0
+          },
+          "1": {
+            "f1-score": 0.7008547008547008,
+            "precision": 0.8541666666666666,
+            "recall": 0.5942028985507246,
+            "support": 69.0
+          },
+          "accuracy": 0.7463768115942029,
+          "macro avg": {
+            "f1-score": 0.7403644573455894,
+            "precision": 0.7715277777777778,
+            "recall": 0.7463768115942029,
+            "support": 138.0
+          },
+          "weighted avg": {
+            "f1-score": 0.7403644573455894,
+            "precision": 0.7715277777777778,
+            "recall": 0.7463768115942029,
+            "support": 138.0
+          }
+        },
+        "classification_report_text": "              precision    recall  f1-score   support\n\n           0       0.69      0.90      0.78        69\n           1       0.85      0.59      0.70        69\n\n    accuracy                           0.75       138\n   macro avg       0.77      0.75      0.74       138\nweighted avg       0.77      0.75      0.74       138\n",
+        "confusion_matrix": [
+          [
+            62,
+            7
+          ],
+          [
+            28,
+            41
+          ]
+        ],
+        "macro_f1": 0.7403644573455894,
+        "pr_auc": 0.8279790155726855,
+        "precision": 0.7715277777777778,
+        "recall": 0.7463768115942029,
+        "roc_auc": 0.821256038647343,
+        "weighted_f1": 0.7403644573455894
+      },
+      "n_train": 552,
+      "n_valid": 138
+    },
+    {
+      "best_checkpoint": "/Users/aayushinagar/Desktop/NLP_PROJECT/SarcasTone-Sarcasm-detection/SarcasTone/member1_text/outputs/checkpoints/mustard__sarcasm__roberta-base__stratified_5fold/fold-1/checkpoint-6",
+      "best_epoch": 6,
+      "best_score": 0.6946259220231823,
+      "fold": 1,
+      "metrics": {
+        "accuracy": 0.6956521739130435,
+        "classification_report": {
+          "0": {
+            "f1-score": 0.7123287671232876,
+            "precision": 0.6753246753246753,
+            "recall": 0.7536231884057971,
+            "support": 69.0
+          },
+          "1": {
+            "f1-score": 0.676923076923077,
+            "precision": 0.7213114754098361,
+            "recall": 0.6376811594202898,
+            "support": 69.0
+          },
+          "accuracy": 0.6956521739130435,
+          "macro avg": {
+            "f1-score": 0.6946259220231823,
+            "precision": 0.6983180753672558,
+            "recall": 0.6956521739130435,
+            "support": 138.0
+          },
+          "weighted avg": {
+            "f1-score": 0.6946259220231823,
+            "precision": 0.6983180753672557,
+            "recall": 0.6956521739130435,
+            "support": 138.0
+          }
+        },
+        "classification_report_text": "              precision    recall  f1-score   support\n\n           0       0.68      0.75      0.71        69\n           1       0.72      0.64      0.68        69\n\n    accuracy                           0.70       138\n   macro avg       0.70      0.70      0.69       138\nweighted avg       0.70      0.70      0.69       138\n",
+        "confusion_matrix": [
+          [
+            52,
+            17
+          ],
+          [
+            25,
+            44
+          ]
+        ],
+        "macro_f1": 0.6946259220231823,
+        "pr_auc": 0.6797395906305261,
+        "precision": 0.6983180753672558,
+        "recall": 0.6956521739130435,
+        "roc_auc": 0.7127704263810123,
+        "weighted_f1": 0.6946259220231823
+      },
+      "n_train": 552,
+      "n_valid": 138
+    },
+    {
+      "best_checkpoint": "/Users/aayushinagar/Desktop/NLP_PROJECT/SarcasTone-Sarcasm-detection/SarcasTone/member1_text/outputs/checkpoints/mustard__sarcasm__roberta-base__stratified_5fold/fold-2/checkpoint-2",
+      "best_epoch": 2,
+      "best_score": 0.6271258278145695,
+      "fold": 2,
+      "metrics": {
+        "accuracy": 0.6304347826086957,
+        "classification_report": {
+          "0": {
+            "f1-score": 0.6622516556291391,
+            "precision": 0.6097560975609756,
+            "recall": 0.7246376811594203,
+            "support": 69.0
+          },
+          "1": {
+            "f1-score": 0.592,
+            "precision": 0.6607142857142857,
+            "recall": 0.5362318840579711,
+            "support": 69.0
+          },
+          "accuracy": 0.6304347826086957,
+          "macro avg": {
+            "f1-score": 0.6271258278145695,
+            "precision": 0.6352351916376306,
+            "recall": 0.6304347826086957,
+            "support": 138.0
+          },
+          "weighted avg": {
+            "f1-score": 0.6271258278145695,
+            "precision": 0.6352351916376306,
+            "recall": 0.6304347826086957,
+            "support": 138.0
+          }
+        },
+        "classification_report_text": "              precision    recall  f1-score   support\n\n           0       0.61      0.72      0.66        69\n           1       0.66      0.54      0.59        69\n\n    accuracy                           0.63       138\n   macro avg       0.64      0.63      0.63       138\nweighted avg       0.64      0.63      0.63       138\n",
+        "confusion_matrix": [
+          [
+            50,
+            19
+          ],
+          [
+            32,
+            37
+          ]
+        ],
+        "macro_f1": 0.6271258278145695,
+        "pr_auc": 0.7622071591228138,
+        "precision": 0.6352351916376306,
+        "recall": 0.6304347826086957,
+        "roc_auc": 0.7340894770006301,
+        "weighted_f1": 0.6271258278145695
+      },
+      "n_train": 552,
+      "n_valid": 138
+    },
+    {
+      "best_checkpoint": "/Users/aayushinagar/Desktop/NLP_PROJECT/SarcasTone-Sarcasm-detection/SarcasTone/member1_text/outputs/checkpoints/mustard__sarcasm__roberta-base__stratified_5fold/fold-3/checkpoint-4",
+      "best_epoch": 4,
+      "best_score": 0.7039261960952585,
+      "fold": 3,
+      "metrics": {
+        "accuracy": 0.7101449275362319,
+        "classification_report": {
+          "0": {
+            "f1-score": 0.7468354430379747,
+            "precision": 0.6629213483146067,
+            "recall": 0.855072463768116,
+            "support": 69.0
+          },
+          "1": {
+            "f1-score": 0.6610169491525424,
+            "precision": 0.7959183673469388,
+            "recall": 0.5652173913043478,
+            "support": 69.0
+          },
+          "accuracy": 0.7101449275362319,
+          "macro avg": {
+            "f1-score": 0.7039261960952585,
+            "precision": 0.7294198578307727,
+            "recall": 0.7101449275362319,
+            "support": 138.0
+          },
+          "weighted avg": {
+            "f1-score": 0.7039261960952585,
+            "precision": 0.7294198578307727,
+            "recall": 0.7101449275362319,
+            "support": 138.0
+          }
+        },
+        "classification_report_text": "              precision    recall  f1-score   support\n\n           0       0.66      0.86      0.75        69\n           1       0.80      0.57      0.66        69\n\n    accuracy                           0.71       138\n   macro avg       0.73      0.71      0.70       138\nweighted avg       0.73      0.71      0.70       138\n",
+        "confusion_matrix": [
+          [
+            59,
+            10
+          ],
+          [
+            30,
+            39
+          ]
+        ],
+        "macro_f1": 0.7039261960952585,
+        "pr_auc": 0.7745953886198946,
+        "precision": 0.7294198578307727,
+        "recall": 0.7101449275362319,
+        "roc_auc": 0.755513547574039,
+        "weighted_f1": 0.7039261960952585
+      },
+      "n_train": 552,
+      "n_valid": 138
+    },
+    {
+      "best_checkpoint": "/Users/aayushinagar/Desktop/NLP_PROJECT/SarcasTone-Sarcasm-detection/SarcasTone/member1_text/outputs/checkpoints/mustard__sarcasm__roberta-base__stratified_5fold/fold-4/checkpoint-3",
+      "best_epoch": 3,
+      "best_score": 0.723709167544784,
+      "fold": 4,
+      "metrics": {
+        "accuracy": 0.7246376811594203,
+        "classification_report": {
+          "0": {
+            "f1-score": 0.7397260273972602,
+            "precision": 0.7012987012987013,
+            "recall": 0.782608695652174,
+            "support": 69.0
+          },
+          "1": {
+            "f1-score": 0.7076923076923077,
+            "precision": 0.7540983606557377,
+            "recall": 0.6666666666666666,
+            "support": 69.0
+          },
+          "accuracy": 0.7246376811594203,
+          "macro avg": {
+            "f1-score": 0.723709167544784,
+            "precision": 0.7276985309772195,
+            "recall": 0.7246376811594203,
+            "support": 138.0
+          },
+          "weighted avg": {
+            "f1-score": 0.723709167544784,
+            "precision": 0.7276985309772194,
+            "recall": 0.7246376811594203,
+            "support": 138.0
+          }
+        },
+        "classification_report_text": "              precision    recall  f1-score   support\n\n           0       0.70      0.78      0.74        69\n           1       0.75      0.67      0.71        69\n\n    accuracy                           0.72       138\n   macro avg       0.73      0.72      0.72       138\nweighted avg       0.73      0.72      0.72       138\n",
+        "confusion_matrix": [
+          [
+            54,
+            15
+          ],
+          [
+            23,
+            46
+          ]
+        ],
+        "macro_f1": 0.723709167544784,
+        "pr_auc": 0.758492241663219,
+        "precision": 0.7276985309772195,
+        "recall": 0.7246376811594203,
+        "roc_auc": 0.7380802352446966,
+        "weighted_f1": 0.723709167544784
+      },
+      "n_train": 552,
+      "n_valid": 138
+    }
+  ],
+  "is_independent_test": false,
+  "model": "roberta-base",
+  "per_fold_best_epochs": [
+    5,
+    6,
+    2,
+    4,
+    3
+  ],
+  "reported_as_test": false,
+  "role": "cross_validation_validation",
+  "task": "sarcasm",
+  "text_source": "gold",
+  "used_for_epoch_selection_only": true,
+  "validation_macro_f1_mean": 0.6979503141646767,
+  "validation_macro_f1_std": 0.04337438381102386
+}

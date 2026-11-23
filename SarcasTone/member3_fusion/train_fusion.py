@@ -62,7 +62,11 @@ def parse_args() -> argparse.Namespace:
                    help="Path to checkpoint (best_model.pt) to resume from")
     p.add_argument(
         "--no-text-encoder", action="store_true",
-        help="Disable live text encoder; use cached text embeddings or zeros",
+        help="Disable live text encoder; use cached text embeddings",
+    )
+    p.add_argument(
+        "--live-text-encoder", action="store_true",
+        help="Explicitly prefer the Member 1 checkpoint over configured cached embeddings",
     )
     return p.parse_args()
 
@@ -93,9 +97,18 @@ def main() -> None:
     log.info("Seed       : %d", seed)
     log.info("Config     : %s", args.config or "default")
 
-    # Text encoder (optional — requires member1 checkpoint)
+    # Prefer the exact cached Member 1 handoff unless live encoding was requested.
     text_encoder = None
-    if not args.no_text_encoder:
+    cached_embeddings = cfg.get("data", {}).get("text_embeddings_npz")
+    cache_available = bool(cached_embeddings and Path(cached_embeddings).is_file())
+    if args.live_text_encoder and args.no_text_encoder:
+        raise ValueError("--live-text-encoder and --no-text-encoder cannot be used together")
+    use_live_encoder = args.live_text_encoder or (not args.no_text_encoder and not cache_available)
+    if cache_available and not args.live_text_encoder:
+        log.info("Using cached Member 1 embeddings from %s", cached_embeddings)
+    elif not use_live_encoder:
+        log.info("Live text encoder disabled; text cache is unavailable")
+    if use_live_encoder:
         m1_checkpoint = Path(
             cfg.get("interface", {}).get(
                 "member1_checkpoint",

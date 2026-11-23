@@ -51,6 +51,7 @@ member3_fusion/
 │   └── test_architecture.py
 ├── train_fusion.py                ← training entry point
 ├── evaluate_fusion.py             ← evaluation / ablation entry point
+├── compare_fusion.py              ← four controlled text/audio comparisons
 ├── predict.py                     ← inference CLI
 └── requirements.txt
 ```
@@ -58,6 +59,8 @@ member3_fusion/
 ---
 
 ## Quick start
+
+Run the commands below from the `SarcasTone/` project directory.
 
 ### 1. Install dependencies
 
@@ -74,10 +77,16 @@ python member3_fusion/train_fusion.py --experiment full_model
 # Text-only ablation
 python member3_fusion/train_fusion.py --experiment text_only --no-text-encoder
 
-# With cached text embeddings (member1 pre-extracted)
-# Set data.text_embeddings_npz in fusion_config.yaml to the .npz path, then:
+# Cached Member 1 embeddings are selected by default when configured.
 python member3_fusion/train_fusion.py --experiment full_model
+
+# Current text handoff lacks OOF provenance; this explicitly labels output exploratory.
+python member3_fusion/compare_fusion.py --allow-unverified-text-provenance
 ```
+
+Use `--epochs`, `--batch-size`, `--seed`, and `--bootstrap` to override comparison
+settings. `--live-text-encoder` explicitly overrides the cached Member 1 embeddings
+for the legacy fusion trainer; it is not used by the comparison command.
 
 ### 3. Evaluate
 
@@ -124,29 +133,53 @@ python -m pytest member3_fusion/tests/test_architecture.py -v
 | File | Required | Source |
 |---|---|---|
 | `datasets/MUSTARD/sarcasm_data.json` | ✅ | MUStARD dataset |
-| `datasets/MUSTARD_PP/mustard++_text.csv` | Optional | MUStARD++ extension |
-| `member2_audio/outputs/handoff/mustard_audio_handoff.csv` | ✅ | Member 2 |
-| `member2_audio/outputs/handoff/mustard_audio_quality.csv` | ✅ | Member 2 |
-| `member2_audio/outputs/handoff/mustard_audio_predictions.csv` | ✅ | Member 2 |
-| Wav2Vec2 embeddings `.npz` | Optional | Member 2 pre-extraction |
-| Text embeddings `.npz` | Optional | Member 1 pre-extraction |
+| `member1_text/handoff/mustard_roberta_embeddings.npz` | ✅ | Member 1 cached utterance/context vectors |
+| `../member2_audio/outputs/handoff/mustard_wav2vec2_embeddings.npz` | ✅ | Member 2 cached Wav2Vec2 vectors |
+| `../member2_audio/outputs/handoff/mustard_acoustic_features_116.csv` | ✅ | Member 2 acoustic features |
+| `../member2_audio/outputs/handoff/mustard_prosody_features_32_praat.csv` | ✅ | Member 2 prosody features |
+| `../member2_audio/outputs/handoff/mustard_audio_quality_contract_6d_praat.csv` | ✅ | Member 2 quality features |
 
 ---
 
-## Configuration
+## Controlled comparison and artifacts
 
-Edit `member3_fusion/configs/fusion_config.yaml`.  
-Key paths to set before training:
+The comparison command trains, with one seed, speaker-aware split, label mapping,
+train-only normalization, and classifier/training settings:
 
-```yaml
-data:
-  wav2vec2_embeddings_npz: null    # set to path if member2 npz available
-  text_embeddings_npz: null        # set to path if member1 npz available
-  mustard_pp_csv: "datasets/MUSTARD_PP/mustard++_text.csv"
+1. `text_only`: cached utterance and masked context embeddings.
+2. `audio_only`: Wav2Vec2, 116 acoustic, 32 prosody, and quality features.
+3. `direct_concat`: `[h_t; h_a]` through the same classifier family.
+4. `psid_concat`: `[h_t; h_a; |normalize(W_t h_t)-normalize(W_a h_a)|]`.
 
-interface:
-  member1_checkpoint: "member1_text/outputs/checkpoints/mustard__sarcasm__roberta-base"
-```
+The PSID projections are trainable linear layers learned on the sarcasm objective;
+they are **not** pretrained sentiment or emotion representations. The quality
+contract masks unreliable audio features when `duration_in_range < 0.5`,
+`silence_ratio >= 0.95`, or `rms <= 1e-8`, while retaining quality values as
+predictors. IDs are normalized and joined by key, never by row position.
+
+Outputs are written to `member3_fusion/outputs/comparison/`: an ID alignment report,
+split IDs and speakers, model/config checkpoints, per-epoch histories, test metrics
+and confusion matrices, paired per-example probabilities, bootstrap confidence
+intervals, and paired bootstrap deltas versus `text_only` and direct concatenation.
+Metrics are reported
+without interpreting a PSID gain unless the measured test results support one.
+
+**Leakage limitation for the current text handoff:** `mustard_roberta_embeddings.npz`
+contains no source-checkpoint or training-ID metadata. The nearby
+`member1_text/checkpoints/mustard__sarcasm__roberta-base/trainer_state.pt` records
+`fold_index: null` and all 690 training IDs, including the 162 IDs in this test
+split; Member 1's README describes its deployment refit as training on all labeled
+MUStARD examples. The handoff does not identify whether that exact checkpoint
+produced the embeddings, and no fold checkpoints are present here. Therefore these
+four computed scores are saved as **exploratory, not leakage-safe generalization
+results**. `compare_fusion.py` refuses to train by default; the flag above is an
+explicit override. A valid held-out comparison requires per-example out-of-fold
+Member 1 embeddings or fold checkpoints with their held-out ID mapping. No Member 1
+model was retrained.
+
+The configured Member 1/2 paths are in `member3_fusion/configs/fusion_config.yaml`.
+MUStARD++ is disabled until matching text/audio exports exist; the loader refuses
+to silently mix it into the MUStARD handoffs.
 
 ---
 

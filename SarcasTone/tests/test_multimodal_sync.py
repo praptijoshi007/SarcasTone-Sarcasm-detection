@@ -135,7 +135,10 @@ class MultimodalSyncTest(unittest.TestCase):
             mustard_json_path=repo_root / d_cfg["mustard_json"],
             handoff_csv_path=repo_root / d_cfg["audio_handoff_csv"],
             quality_csv_path=repo_root / d_cfg["audio_quality_csv"],
-            predictions_csv_path=repo_root / d_cfg["audio_predictions_csv"],
+            predictions_csv_path=None,
+            wav2vec2_npz_path=repo_root / d_cfg["wav2vec2_embeddings_npz"],
+            text_embeddings_npz_path=repo_root / d_cfg["text_embeddings_npz"],
+            prosody_csv_path=repo_root / d_cfg["prosody_csv"],
             split_strategy="speaker",
         )
         total_records = sum(len(v) for v in splits.values())

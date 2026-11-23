@@ -19,6 +19,9 @@ py -0p
 The projection is a 2-layer MLP with GELU so the model can learn *what aspect*
 of each modality is relevant for detecting incongruence.
 
+These are trainable projections of the supplied representations, not pretrained
+sentiment or emotion encoders.
+
 Optionally, a cosine agreement score is also returned as an interpretable
 scalar (not a training signal — only logged / returned in predictions).
 

@@ -91,29 +91,26 @@ data:
   # MUStARD (primary)
   mustard_json: "datasets/MUSTARD/sarcasm_data.json"
 
-  # MUStARD++ (optional extension — set to null to disable)
-  mustard_pp_csv: "datasets/MUSTARD_PP/mustard++_text.csv"
+  # MUStARD++ requires a matching text/audio export; disabled for this dataset.
+  mustard_pp_csv: null
 
-  # member2 audio handoff outputs
-  audio_handoff_csv: "member2_audio/outputs/handoff/mustard_audio_handoff.csv"
-  audio_predictions_csv: "member2_audio/outputs/handoff/mustard_audio_predictions.csv"
-  audio_quality_csv: "member2_audio/outputs/handoff/mustard_audio_quality.csv"
-  frame_manifest_csv: "member2_audio/outputs/handoff/mustard_frame_embedding_manifest.csv"
+  # Actual Member 2 handoffs (paths resolve from the SarcasTone directory).
+  audio_handoff_csv: "../member2_audio/outputs/handoff/mustard_acoustic_features_116.csv"
+  prosody_csv: "../member2_audio/outputs/handoff/mustard_prosody_features_32_praat.csv"
+  audio_quality_csv: "../member2_audio/outputs/handoff/mustard_audio_quality_contract_6d_praat.csv"
+  audio_predictions_csv: null
 
-  # Wav2Vec2 pooled embeddings (produced by member2)
-  # Set to null to disable and fall back to handoff-CSV columns
-  wav2vec2_embeddings_npz: "member2_audio/outputs/handoff/mustard_wav2vec2_embeddings.npz"
-  frame_embeddings_npz: null       # e.g. "E:/SarcasTone_Embeddings/mustard_frame_embeddings.npz"
+  # Wav2Vec2 pooled embeddings (produced by Member 2).
+  wav2vec2_embeddings_npz: "../member2_audio/outputs/handoff/mustard_wav2vec2_embeddings.npz"
 
-  # Cached member1 text embeddings (.npz) — produced by member1 pre-extraction
-  # Keys expected: 'utterance_ids' [N], 'embeddings' [N, 768]
-  text_embeddings_npz: "member1_text/outputs/handoff/mustard_text_embeddings.npz"
+  # Member 1's actual handoff: ids, utterance/context [N,768].
+  text_embeddings_npz: "member1_text/handoff/mustard_roberta_embeddings.npz"
 
   # Splits
   val_ratio: 0.15
   test_ratio: 0.15
   split_strategy: "speaker"   # speaker | stratified
-  dedup_mustard_family: true  # remove MUStARD rows that appear in MUStARD++
+  max_alignment_drop_ratio: 0.10
 
 # ------------------------------------------------------------------ #
 # Experiment variants (ablation)
@@ -182,6 +179,7 @@ output:
   plots_dir: "member3_fusion/outputs/plots"
   ablation_dir: "member3_fusion/outputs/ablation"
   tensorboard_dir: "member3_fusion/outputs/runs"
+  comparison_dir: "member3_fusion/outputs/comparison"
 
 # ------------------------------------------------------------------ #
 # Logging

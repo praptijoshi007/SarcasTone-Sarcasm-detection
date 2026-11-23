@@ -249,8 +249,8 @@ class SarcasToneFusionModel(nn.Module):
         else:  # cross_attention
             classifier_in_dim = fusion_hidden
 
-        # Disagreement and acoustic-full vectors appended
-        classifier_in_dim += disagree_in + acou_out
+        # Disagreement, prosody, and acoustic-full vectors appended.
+        classifier_in_dim += disagree_in + prosody_out + acou_out
 
         # ------------------------------------------------------------------ #
         # 9. Residual projection + normalisation
@@ -352,14 +352,36 @@ class SarcasToneFusionModel(nn.Module):
         quality         = batch["quality"].to(device)             # [B, QUALITY_DIM]
         quality_ok      = batch["quality_ok"].to(device)          # [B] bool
         B = audio_emb_raw.size(0)
+        expected_shapes = {
+            "audio_embedding": (B, self.audio_dim),
+            "prosody": (B, self.prosody_dim),
+            "acoustic_full": (B, self.acoustic_dim),
+            "quality": (B, self.quality_dim),
+        }
+        for key, expected in expected_shapes.items():
+            if tuple(batch[key].shape) != expected:
+                raise ValueError(
+                    f"{key} must have shape {expected}, got {tuple(batch[key].shape)}"
+                )
+        audio_avail = audio_avail & quality_ok & self.audio_available_default
 
         # ------------------------------------------------------------------ #
         # 1. Text representations
         # ------------------------------------------------------------------ #
+        text_avail = batch.get(
+            "text_available", torch.ones(B, dtype=torch.bool, device=device)
+        ).to(device)
+        text_avail = text_avail & self.text_available_flag
         if text_embeddings is not None:
             text_pool = text_embeddings.to(device)      # [B, text_dim]
         else:
             text_pool = torch.zeros(B, self.text_dim, device=device)
+        if tuple(text_pool.shape) != (B, self.text_dim):
+            raise ValueError(
+                f"text embeddings must have shape {(B, self.text_dim)}, "
+                f"got {tuple(text_pool.shape)}"
+            )
+        text_pool = text_pool * text_avail.float().unsqueeze(-1)
 
         if context_embeddings is not None:
             ctx_pool = context_embeddings.to(device)
@@ -371,6 +393,13 @@ class SarcasToneFusionModel(nn.Module):
         else:
             ctx_pool = torch.zeros(B, self.text_dim, device=device)
             hc       = torch.zeros(B, dtype=torch.bool, device=device)
+        if tuple(ctx_pool.shape) != (B, self.text_dim):
+            raise ValueError(
+                f"context embeddings must have shape {(B, self.text_dim)}, "
+                f"got {tuple(ctx_pool.shape)}"
+            )
+        hc = hc & text_avail
+        ctx_pool = ctx_pool * hc.float().unsqueeze(-1)
 
         # ------------------------------------------------------------------ #
         # 2. Context enrichment
@@ -460,7 +489,7 @@ class SarcasToneFusionModel(nn.Module):
         # ------------------------------------------------------------------ #
         # 8. Assemble classifier input
         # ------------------------------------------------------------------ #
-        parts = [fused, acoustic_proj_out]
+        parts = [fused, prosody_proj_out, acoustic_proj_out]
         if self.psid_enabled and disagree_vec.shape[-1] > 0:
             parts.append(disagree_vec)
         classifier_input = torch.cat(parts, dim=-1)   # [B, classifier_in_dim]

@@ -34,7 +34,6 @@ from member3_fusion.src.training.dataset import (
     FusionDataset,
     collate_fn,
     load_mustard_fusion_records,
-    ACOUSTIC_FEATURE_COLS,
 )
 from member3_fusion.src.evaluation.evaluator import FusionEvaluator
 from member3_fusion.src.training.trainer import set_seed
@@ -71,7 +70,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_data(cfg: dict, seed: int) -> dict:
-    splits = load_mustard_fusion_records(
+    splits, acoustic_dim = load_mustard_fusion_records(
         mustard_json_path=cfg["data"]["mustard_json"],
         handoff_csv_path=cfg["data"]["audio_handoff_csv"],
         quality_csv_path=cfg["data"]["audio_quality_csv"],
@@ -81,8 +80,11 @@ def load_data(cfg: dict, seed: int) -> dict:
         test_ratio=cfg["data"].get("test_ratio", 0.15),
         seed=seed,
         split_strategy=cfg["data"].get("split_strategy", "speaker"),
+        text_embeddings_npz_path=cfg["data"].get("text_embeddings_npz"),
+        prosody_csv_path=cfg["data"].get("prosody_csv"),
+        alignment_report_path=Path(cfg["output"]["comparison_dir"]) / "alignment_report.json",
+        max_alignment_drop_ratio=cfg["data"].get("max_alignment_drop_ratio", 0.10),
     )
-    acoustic_dim = len(ACOUSTIC_FEATURE_COLS) if ACOUSTIC_FEATURE_COLS else 116
     return {
         split: FusionDataset(records, acoustic_dim=acoustic_dim)
         for split, records in splits.items()

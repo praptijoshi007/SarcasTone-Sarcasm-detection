@@ -25,7 +25,8 @@ from __future__ import annotations
 
 import json
 import logging
-import pickle
+import unicodedata
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -53,7 +54,7 @@ from shared.constants import (
     TEXT_HIDDEN,
     AUDIO_HIDDEN,
 )
-from shared.splits import assign_speaker_splits, deduplicate_mustard_family
+from shared.splits import assign_speaker_splits
 from shared.examples import UtteranceExample
 
 log = logging.getLogger(__name__)
@@ -75,12 +76,6 @@ _HANDOFF_PROSODY_MAP: dict[str, str] = {
     "duration_seconds":       "duration_sec",
 }
 
-_HANDOFF_QUALITY_MAP: dict[str, str] = {
-    "clipping_ratio":  "clipping_ratio",
-    "silence_ratio":   "silence_ratio",
-    "rms_energy":      "rms",
-}
-
 # MUStARD++ CSV required columns
 _MUSTARD_PP_LABEL_COLS = {"sarcasm", "label", "is_sarcastic"}  # any one accepted
 _MUSTARD_PP_TEXT_COLS  = {"utterance", "text", "sentence"}
@@ -98,7 +93,10 @@ class FusionRecord:
         "dataset",
         "text",
         "context",
+        "context_embedding",
+        "has_context",
         "speaker",
+        "show",
         "label",
         "split",
         # Acoustic
@@ -122,6 +120,7 @@ class FusionRecord:
         context: list[str],
         speaker: str,
         label: int,
+        show: str | None = None,
         split: str = "train",
         audio_embedding: np.ndarray | None = None,
         audio_available: bool = False,
@@ -131,13 +130,18 @@ class FusionRecord:
         quality_ok: bool = False,
         audio_duration_sec: float | None = None,
         text_embedding: np.ndarray | None = None,
+        context_embedding: np.ndarray | None = None,
+        has_context: bool = False,
         text_available: bool = False,
     ) -> None:
         self.example_id = example_id
         self.dataset = dataset
         self.text = text
         self.context = context
+        self.context_embedding = context_embedding
+        self.has_context = bool(has_context)
         self.speaker = speaker
+        self.show = show
         self.label = int(label)
         self.split = split
         self.audio_embedding = audio_embedding
@@ -288,37 +292,145 @@ def _load_handoff_csvs(
 # ---------------------------------------------------------------------------
 
 def _load_wav2vec2_npz(npz_path: Path | None) -> dict[str, np.ndarray] | None:
-    """Load pooled Wav2Vec2 embeddings from npz if available."""
-    if npz_path is None or not Path(npz_path).is_file():
-        return None
-    archive = np.load(npz_path, allow_pickle=False)
-    ids  = archive["utterance_ids"].astype(str)
-    embs = archive["embeddings"].astype(np.float32)
-    assert embs.shape == (len(ids), 768), (
-        f"Expected wav2vec2 embeddings shape (N, 768), got {embs.shape}"
+    """Load pooled Wav2Vec2 embeddings from the Member 2 handoff."""
+    return _load_embedding_npz(
+        npz_path,
+        modality="Wav2Vec2",
+        id_key_options=("utterance_ids", "ids"),
+        embedding_key_options=("embeddings",),
+        width=AUDIO_HIDDEN,
     )
-    log.info("Loaded wav2vec2 embeddings for %d utterances", len(ids))
-    return dict(zip(ids, embs))
 
 
 def _load_text_npz(npz_path: Path | None) -> dict[str, np.ndarray] | None:
-    """Load cached member1 text embeddings from npz if available.
-
-    Expected archive keys: 'utterance_ids' [N,str], 'embeddings' [N, TEXT_HIDDEN].
-    """
+    """Load cached Member 1 utterance/context vectors, keyed by normalized ID."""
     if npz_path is None or not Path(npz_path).is_file():
         return None
-    archive = np.load(npz_path, allow_pickle=False)
-    ids  = archive["utterance_ids"].astype(str)
-    embs = archive["embeddings"].astype(np.float32)
-    if embs.shape[1] != TEXT_HIDDEN:
-        log.warning(
-            "Text embeddings dim %d ≠ TEXT_HIDDEN=%d; ignoring",
-            embs.shape[1], TEXT_HIDDEN,
+    with np.load(npz_path, allow_pickle=False) as archive:
+        id_key = "utterance_ids" if "utterance_ids" in archive else "ids"
+        utterance_key = "embeddings" if "embeddings" in archive else "utterance"
+        if id_key not in archive or utterance_key not in archive or "context" not in archive and "context_embeddings" not in archive:
+            raise ValueError(
+                f"Text NPZ {npz_path} must contain ids, utterance embeddings, and context embeddings"
+            )
+        ids = [_normalize_utterance_id(value) for value in archive[id_key]]
+        utterance = np.asarray(archive[utterance_key], dtype=np.float32)
+        context_key = "context_embeddings" if "context_embeddings" in archive else "context"
+        context = np.asarray(archive[context_key], dtype=np.float32)
+        has_context = (
+            np.asarray(archive["has_context"], dtype=bool)
+            if "has_context" in archive
+            else np.ones(len(ids), dtype=bool)
         )
+    if len(set(ids)) != len(ids) or any(uid is None for uid in ids):
+        raise ValueError(f"Text NPZ {npz_path} has null or duplicate normalized IDs")
+    expected_shape = (len(ids), TEXT_HIDDEN)
+    if utterance.shape != expected_shape or context.shape != expected_shape:
+        raise ValueError(
+            f"Text NPZ {npz_path} must have utterance/context shape {expected_shape}; "
+            f"got {utterance.shape} and {context.shape}"
+        )
+    if has_context.shape != (len(ids),):
+        raise ValueError(f"Text NPZ {npz_path} has invalid has_context shape {has_context.shape}")
+    if not np.isfinite(utterance).all() or not np.isfinite(context).all():
+        raise ValueError(f"Text NPZ {npz_path} contains non-finite embeddings")
+    return {
+        uid: np.concatenate((utterance[index], context[index], [float(has_context[index])])).astype(np.float32)
+        for index, uid in enumerate(ids)
+    }
+
+
+def _normalize_utterance_id(value: Any) -> str | None:
+    if value is None or pd.isna(value):
         return None
-    log.info("Loaded cached text embeddings for %d utterances", len(ids))
-    return dict(zip(ids, embs))
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    normalized = unicodedata.normalize("NFKC", str(value)).strip().casefold()
+    return normalized or None
+
+
+def _read_feature_csv(
+    path: Path | str,
+    *,
+    modality: str,
+    required_features: tuple[str, ...] | None = None,
+) -> tuple[pd.DataFrame, list[str], set[str], int]:
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Required {modality} handoff not found: {path}")
+    frame = pd.read_csv(path, dtype={"utterance_id": str})
+    if "utterance_id" not in frame.columns:
+        raise ValueError(f"{modality} handoff {path} is missing 'utterance_id'")
+    if frame.columns.duplicated().any():
+        raise ValueError(f"{modality} handoff {path} has duplicate column names")
+    ids = [_normalize_utterance_id(value) for value in frame["utterance_id"]]
+    if any(uid is None for uid in ids):
+        raise ValueError(f"{modality} handoff {path} contains null/blank utterance_id values")
+    duplicates = sorted(uid for uid, count in Counter(ids).items() if count > 1)
+    if duplicates:
+        raise ValueError(f"{modality} handoff {path} has duplicate normalized IDs: {duplicates[:10]}")
+
+    if required_features is not None:
+        missing_columns = [column for column in required_features if column not in frame.columns]
+        if missing_columns:
+            raise ValueError(f"{modality} handoff {path} is missing columns: {missing_columns}")
+        feature_cols = list(required_features)
+    else:
+        metadata = {
+            "utterance_id", "speaker", "sarcasm", "audio_sarcasm_prediction",
+            "audio_sarcasm_label", "audio_sarcasm_decision_score", "sarcasm_score_type",
+            "predicted_emotion", "emotion_decision_scores", "emotion_score_type",
+            "pooled_embedding_dim", "frame_count", "frame_embedding_dim",
+            "audio_duration_seconds", "duration_seconds", "sample_rate", "channels",
+            "peak_amplitude", "rms_energy", "clipping_ratio", "silence_ratio",
+            "audio_valid", "audio_warnings", "quality_status",
+        }
+        feature_cols = [column for column in frame.columns if column not in metadata]
+    if not feature_cols:
+        raise ValueError(f"{modality} handoff {path} has no feature columns")
+
+    numeric = frame[feature_cols].apply(pd.to_numeric, errors="coerce").to_numpy(dtype=np.float64)
+    valid_rows = np.isfinite(numeric).all(axis=1)
+    invalid_ids = {ids[index] for index, valid in enumerate(valid_rows) if not valid}
+    frame = frame.copy()
+    frame["utterance_id"] = ids
+    frame.loc[:, feature_cols] = numeric.astype(np.float32)
+    frame.index = ids
+    return frame, feature_cols, invalid_ids, len(ids)
+
+
+def _load_embedding_npz(
+    npz_path: Path | str | None,
+    *,
+    modality: str,
+    id_key_options: tuple[str, ...],
+    embedding_key_options: tuple[str, ...],
+    width: int,
+) -> dict[str, np.ndarray] | None:
+    if npz_path is None:
+        return None
+    path = Path(npz_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Required {modality} embeddings not found: {path}")
+    with np.load(path, allow_pickle=False) as archive:
+        id_key = next((key for key in id_key_options if key in archive), None)
+        embedding_key = next((key for key in embedding_key_options if key in archive), None)
+        if id_key is None or embedding_key is None:
+            raise ValueError(
+                f"{modality} NPZ {path} requires one of {id_key_options} and {embedding_key_options}; "
+                f"found {list(archive.keys())}"
+            )
+        ids = [_normalize_utterance_id(value) for value in archive[id_key]]
+        embeddings = np.asarray(archive[embedding_key], dtype=np.float32)
+    if any(uid is None for uid in ids) or len(set(ids)) != len(ids):
+        raise ValueError(f"{modality} NPZ {path} has null or duplicate normalized IDs")
+    if embeddings.shape != (len(ids), width):
+        raise ValueError(
+            f"{modality} NPZ {path} must have shape ({len(ids)}, {width}); got {embeddings.shape}"
+        )
+    if not np.isfinite(embeddings).all():
+        raise ValueError(f"{modality} NPZ {path} contains non-finite embeddings")
+    return {uid: embeddings[index] for index, uid in enumerate(ids)}
 
 
 # ---------------------------------------------------------------------------
@@ -385,7 +497,7 @@ def _build_acoustic_full(row: pd.Series, feature_cols: list[str]) -> np.ndarray:
 ACOUSTIC_FEATURE_COLS: list[str] = []  # populated on first load
 
 
-def load_mustard_fusion_records(
+def _load_legacy_mustard_fusion_records(
     mustard_json_path: Path | str,
     handoff_csv_path: Path | str,
     quality_csv_path: Path | str,
@@ -647,6 +759,298 @@ def load_mustard_fusion_records(
 
 
 # ---------------------------------------------------------------------------
+# Current Member 1/2 handoff loader
+# ---------------------------------------------------------------------------
+
+def load_mustard_fusion_records(
+    mustard_json_path: Path | str,
+    handoff_csv_path: Path | str,
+    quality_csv_path: Path | str,
+    predictions_csv_path: Path | str | None = None,
+    wav2vec2_npz_path: Path | str | None = None,
+    mustard_pp_csv_path: Path | str | None = None,
+    text_embeddings_npz_path: Path | str | None = None,
+    *,
+    prosody_csv_path: Path | str | None = None,
+    val_ratio: float = 0.15,
+    test_ratio: float = 0.15,
+    seed: int = 42,
+    split_strategy: str = "speaker",
+    dedup_mustard_family: bool = True,
+    alignment_report_path: Path | str | None = None,
+    max_alignment_drop_ratio: float = 0.10,
+) -> tuple[dict[str, list[FusionRecord]], int]:
+    """Synchronize current text/audio handoffs by normalized utterance ID."""
+    del predictions_csv_path, dedup_mustard_family
+    global ACOUSTIC_FEATURE_COLS
+    if not 0 <= max_alignment_drop_ratio < 1:
+        raise ValueError("max_alignment_drop_ratio must be in [0, 1)")
+    if mustard_pp_csv_path is not None:
+        raise ValueError(
+            "MUStARD++ requires matching Member 1/2 exports; this loader only "
+            "synchronizes the supplied MUStARD handoffs."
+        )
+
+    mustard_path = Path(mustard_json_path)
+    mustard_data = _load_mustard_json(mustard_path)
+    source_records: dict[str, dict[str, Any]] = {}
+    labels: dict[str, int] = {}
+    invalid_labels: set[str] = set()
+    for raw_id, record in mustard_data.items():
+        uid = _normalize_utterance_id(raw_id)
+        if uid is None or uid in source_records:
+            raise ValueError(f"MUStARD JSON has null/duplicate normalized ID: {raw_id!r}")
+        source_records[uid] = record
+        raw_label = record.get("sarcasm")
+        if isinstance(raw_label, (bool, np.bool_)):
+            labels[uid] = int(raw_label)
+        elif isinstance(raw_label, (int, np.integer)) and raw_label in (0, 1):
+            labels[uid] = int(raw_label)
+        else:
+            invalid_labels.add(uid)
+        if not isinstance(record.get("utterance"), str) or not record["utterance"].strip():
+            invalid_labels.add(uid)
+
+    acoustic, acoustic_cols, bad_acoustic, acoustic_count = _read_feature_csv(
+        handoff_csv_path, modality="acoustic"
+    )
+    prosody_path = prosody_csv_path or handoff_csv_path
+    prosody, prosody_cols, bad_prosody, prosody_count = _read_feature_csv(
+        prosody_path, modality="prosody", required_features=PROSODY_FEATURES
+    )
+    quality, quality_cols, bad_quality, quality_count = _read_feature_csv(
+        quality_csv_path, modality="quality", required_features=QUALITY_FEATURES
+    )
+    if len(acoustic_cols) != 116:
+        raise ValueError(
+            f"Acoustic handoff must provide 116 named features; found {len(acoustic_cols)}"
+        )
+    if len(prosody_cols) != PROSODY_DIM or len(quality_cols) != QUALITY_DIM:
+        raise ValueError(
+            f"Expected prosody/quality dimensions {PROSODY_DIM}/{QUALITY_DIM}; "
+            f"got {len(prosody_cols)}/{len(quality_cols)}"
+        )
+    ACOUSTIC_FEATURE_COLS = acoustic_cols
+
+    wav2vec2_map = _load_wav2vec2_npz(
+        Path(wav2vec2_npz_path) if wav2vec2_npz_path is not None else None
+    )
+    text_emb_map = _load_text_npz(
+        Path(text_embeddings_npz_path)
+        if text_embeddings_npz_path is not None
+        else None
+    )
+    if wav2vec2_map is None or text_emb_map is None:
+        raise ValueError(
+            "Synchronization requires cached Member 1 text and Member 2 Wav2Vec2 "
+            "embeddings; configure both NPZ paths."
+        )
+    with np.load(text_embeddings_npz_path, allow_pickle=False) as text_archive:
+        text_has_context_key = "has_context" in text_archive
+
+    label_ids = set(labels) - invalid_labels
+    modality_ids = {
+        "text": set(text_emb_map),
+        "wav2vec2": set(wav2vec2_map),
+        "acoustic": set(acoustic.index) - bad_acoustic,
+        "prosody": set(prosody.index) - bad_prosody,
+        "quality": set(quality.index) - bad_quality,
+    }
+    common_ids = set(label_ids)
+    for ids in modality_ids.values():
+        common_ids.intersection_update(ids)
+
+    report: dict[str, Any] = {
+        "label_source": str(mustard_path),
+        "speaker_source": "MUStARD JSON",
+        "label_mapping": {"False": 0, "True": 1},
+        "sources": {
+            "labels": {"count": len(source_records), "valid_count": len(label_ids)},
+            "text_embeddings": {
+                "path": str(text_embeddings_npz_path),
+                "count": len(text_emb_map),
+                "utterance_dim": TEXT_HIDDEN,
+                "context_dim": TEXT_HIDDEN,
+                "has_context_source": (
+                    "Member 1 has_context array"
+                    if text_has_context_key
+                    else "non-empty context text in MUStARD JSON"
+                ),
+            },
+            "wav2vec2_embeddings": {
+                "path": str(wav2vec2_npz_path),
+                "count": len(wav2vec2_map),
+                "embedding_dim": AUDIO_HIDDEN,
+            },
+            "acoustic_csv": {
+                "path": str(handoff_csv_path),
+                "count": acoustic_count,
+                "feature_count": len(acoustic_cols),
+                "feature_columns": acoustic_cols,
+            },
+            "prosody_csv": {
+                "path": str(prosody_path),
+                "count": prosody_count,
+                "feature_count": len(prosody_cols),
+                "feature_columns": prosody_cols,
+            },
+            "quality_csv": {
+                "path": str(quality_csv_path),
+                "count": quality_count,
+                "feature_count": len(quality_cols),
+                "feature_columns": quality_cols,
+            },
+        },
+        "id_validation": {
+            "normalization": "Unicode NFKC, trim whitespace, casefold",
+            "null_ids": 0,
+            "duplicate_normalized_ids": 0,
+        },
+        "invalid_label_or_text": {
+            "count": len(invalid_labels),
+            "examples": sorted(invalid_labels)[:20],
+        },
+        "invalid_feature_ids": {
+            "acoustic": {"count": len(bad_acoustic), "examples": sorted(bad_acoustic)[:20]},
+            "prosody": {"count": len(bad_prosody), "examples": sorted(bad_prosody)[:20]},
+            "quality": {"count": len(bad_quality), "examples": sorted(bad_quality)[:20]},
+        },
+        "unmatched_ids": {},
+        "common_valid_labelled_count": len(common_ids),
+        "dropped_labelled_count": len(label_ids - common_ids),
+        "max_alignment_drop_ratio": max_alignment_drop_ratio,
+        "audio_quality_rule": (
+            "unreliable when duration_in_range < 0.5, silence_ratio >= 0.95, "
+            "or rms <= 1e-8"
+        ),
+    }
+    for name, ids in modality_ids.items():
+        missing_ids = label_ids - ids
+        extra_ids = ids - label_ids
+        report["unmatched_ids"][name] = {
+            "missing_from_modality_count": len(missing_ids),
+            "missing_from_modality_examples": sorted(missing_ids)[:10],
+            "extra_not_in_labels_count": len(extra_ids),
+            "extra_not_in_labels_examples": sorted(extra_ids)[:10],
+        }
+
+    dropped_ratio = (len(label_ids) - len(common_ids)) / max(1, len(label_ids))
+    report_path = Path(alignment_report_path) if alignment_report_path is not None else None
+    if report_path is not None:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    if not common_ids:
+        raise ValueError("No common valid labelled IDs across Member 1/2 handoffs")
+    if dropped_ratio > max_alignment_drop_ratio:
+        raise ValueError(
+            f"Only {len(common_ids)}/{len(label_ids)} labelled utterances aligned "
+            f"({dropped_ratio:.1%} dropped; limit {max_alignment_drop_ratio:.1%}). "
+            f"See synchronization report: {report_path}"
+        )
+
+    records_by_id: dict[str, FusionRecord] = {}
+    examples: list[UtteranceExample] = []
+    for uid, source in source_records.items():
+        if uid not in common_ids:
+            continue
+        context = source.get("context") or []
+        if isinstance(context, str):
+            context = [context] if context.strip() else []
+        has_context = bool(context)
+        cached_text = text_emb_map[uid]
+        text_embedding = cached_text[:TEXT_HIDDEN]
+        context_embedding = cached_text[TEXT_HIDDEN:2 * TEXT_HIDDEN]
+        has_context = has_context and bool(cached_text[-1])
+
+        quality_row = quality.loc[uid]
+        quality_vector = quality_row[quality_cols].to_numpy(dtype=np.float32)
+        audio_quality_ok = bool(
+            quality_row["duration_in_range"] >= 0.5
+            and quality_row["silence_ratio"] < 0.95
+            and quality_row["rms"] > 1e-8
+        )
+        record = FusionRecord(
+            example_id=uid,
+            dataset="mustard",
+            text=source["utterance"],
+            context=context,
+            speaker=str(source.get("speaker") or "UNKNOWN"),
+            show=source.get("show"),
+            label=labels[uid],
+            audio_embedding=wav2vec2_map[uid],
+            audio_available=audio_quality_ok,
+            prosody_vector=prosody.loc[uid, prosody_cols].to_numpy(dtype=np.float32),
+            acoustic_features_full=acoustic.loc[uid, acoustic_cols].to_numpy(dtype=np.float32),
+            quality_vector=quality_vector,
+            quality_ok=audio_quality_ok,
+            audio_duration_sec=float(prosody.loc[uid, "duration_sec"]),
+            text_embedding=text_embedding,
+            context_embedding=context_embedding,
+            has_context=has_context,
+            text_available=True,
+        )
+        records_by_id[uid] = record
+        examples.append(UtteranceExample(
+            example_id=uid,
+            dataset="mustard",
+            text=record.text,
+            speaker=record.speaker,
+            task="sarcasm",
+            context=context,
+            context_speakers=source.get("context_speakers", []),
+            label=record.label,
+            show=source.get("show"),
+        ))
+
+    if split_strategy == "speaker":
+        buckets = assign_speaker_splits(
+            examples, val_ratio=val_ratio, test_ratio=test_ratio, seed=seed
+        )
+    elif split_strategy == "stratified":
+        from sklearn.model_selection import train_test_split
+        labels_array = [example.label for example in examples]
+        train_val, test_examples = train_test_split(
+            examples, test_size=test_ratio, stratify=labels_array, random_state=seed
+        )
+        relative_val = val_ratio / (1.0 - test_ratio)
+        train_labels = [example.label for example in train_val]
+        train_examples, val_examples = train_test_split(
+            train_val, test_size=relative_val, stratify=train_labels, random_state=seed
+        )
+        buckets = {"train": train_examples, "val": val_examples, "test": test_examples}
+    else:
+        raise ValueError(f"Unknown split_strategy {split_strategy!r}")
+
+    result: dict[str, list[FusionRecord]] = {}
+    for split_name, split_examples in buckets.items():
+        result[split_name] = []
+        for example in split_examples:
+            record = records_by_id[example.example_id]
+            record.split = split_name
+            result[split_name].append(record)
+        log.info(
+            "Split '%s': %d examples (%d sarcastic, %d non-sarcastic)",
+            split_name,
+            len(result[split_name]),
+            sum(record.label for record in result[split_name]),
+            sum(1 - record.label for record in result[split_name]),
+        )
+    if report_path is not None:
+        report["speaker_split_counts"] = {
+            split: len(split_records) for split, split_records in result.items()
+        }
+        report["audio_unreliable_count"] = sum(
+            not record.quality_ok for record in records_by_id.values()
+        )
+        report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    log.info(
+        "Synchronized %d/%d labelled utterances by normalized ID",
+        len(common_ids), len(label_ids),
+    )
+    return result, len(acoustic_cols)
+
+
+# ---------------------------------------------------------------------------
 # PyTorch Dataset
 # ---------------------------------------------------------------------------
 
@@ -697,6 +1101,10 @@ class FusionDataset(Dataset):
             text_emb = torch.tensor(rec.text_embedding, dtype=torch.float32)
         else:
             text_emb = torch.zeros(TEXT_HIDDEN, dtype=torch.float32)
+        if rec.context_embedding is not None:
+            context_emb = torch.tensor(rec.context_embedding, dtype=torch.float32)
+        else:
+            context_emb = torch.zeros(TEXT_HIDDEN, dtype=torch.float32)
 
         prosody = torch.tensor(rec.prosody_vector, dtype=torch.float32)
         quality = torch.tensor(rec.quality_vector, dtype=torch.float32)
@@ -724,6 +1132,8 @@ class FusionDataset(Dataset):
             "quality_ok":      torch.tensor(rec.quality_ok, dtype=torch.bool),
             "text_embedding":  text_emb,                 # [TEXT_HIDDEN]
             "text_available":  torch.tensor(rec.text_available, dtype=torch.bool),
+            "context_embedding": context_emb,            # [CONTEXT_HIDDEN]
+            "has_context":     torch.tensor(rec.has_context, dtype=torch.bool),
             "label":           torch.tensor(rec.label, dtype=torch.long),
         }
 
@@ -735,6 +1145,7 @@ def collate_fn(batch: list[dict]) -> dict:
         "prosody", "acoustic_full",
         "quality", "quality_ok",
         "text_embedding", "text_available",
+        "context_embedding", "has_context",
         "label",
     ]
     out: dict = {}

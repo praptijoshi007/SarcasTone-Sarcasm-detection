@@ -391,6 +391,9 @@ class TestFusionModel:
         loss.backward()
         grads = [p.grad for p in model.parameters() if p.grad is not None]
         assert len(grads) > 0, "No gradients found after backward pass"
+        prosody_grad = model.prosody_proj.proj[0].weight.grad
+        assert prosody_grad is not None
+        assert torch.count_nonzero(prosody_grad).item() > 0
 
     @pytest.mark.parametrize("strategy", ["early", "late", "concat", "cross_attention"])
     def test_fusion_strategies(self, strategy):

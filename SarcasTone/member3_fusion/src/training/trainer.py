@@ -149,7 +149,8 @@ def run_batch(
     tensor_keys = [
         "audio_embedding", "audio_available",
         "prosody", "acoustic_full", "quality", "quality_ok",
-        "text_embedding", "text_available", "label",
+        "text_embedding", "text_available", "context_embedding",
+        "has_context", "label",
     ]
     device_batch = {k: batch[k].to(device) for k in tensor_keys if k in batch}
     device_batch["texts"]       = batch["texts"]
@@ -163,8 +164,14 @@ def run_batch(
     ctx_emb  = None
     has_ctx  = None
 
-    # Priority 1: live text encoder
-    if text_encoder is not None and text_encoder.is_available:
+    if not model.audio_available_default:
+        for key in ("audio_embedding", "prosody", "acoustic_full", "quality"):
+            device_batch[key] = torch.zeros_like(device_batch[key])
+        device_batch["audio_available"] = torch.zeros_like(device_batch["audio_available"])
+        device_batch["quality_ok"] = torch.zeros_like(device_batch["quality_ok"])
+
+    # Priority 1: live text encoder, when explicitly selected by the caller.
+    if model.text_available_flag and text_encoder is not None and text_encoder.is_available:
         try:
             te_out = text_encoder(
                 device_batch["texts"],
@@ -176,16 +183,15 @@ def run_batch(
         except Exception as e:
             log.warning("Text encoder failed: %s; falling back to cached embeddings", e)
 
-    # Priority 2: cached embeddings from dataset
-    if text_emb is None and "text_embedding" in device_batch:
+    # Priority 2: aligned cached Member 1 utterance and context embeddings.
+    if model.text_available_flag and text_emb is None and "text_embedding" in device_batch:
         text_avail_mask = device_batch["text_available"]   # [B] bool
         if text_avail_mask.any():
             text_emb = device_batch["text_embedding"]      # [B, TEXT_HIDDEN]
-            # Zero out positions where text is unavailable
             text_emb = text_emb * text_avail_mask.float().unsqueeze(-1)
-            # has_context defaults to no context (context handled separately)
-            has_ctx = torch.zeros(B, dtype=torch.bool, device=device)
-            ctx_emb = None
+            ctx_emb = device_batch["context_embedding"]
+            has_ctx = device_batch["has_context"] & text_avail_mask
+            ctx_emb = ctx_emb * has_ctx.float().unsqueeze(-1)
 
     return model(
         device_batch,
@@ -328,11 +334,18 @@ class FusionTrainer:
             wav2vec2_npz_path=self.d_cfg.get("wav2vec2_embeddings_npz"),
             mustard_pp_csv_path=self.d_cfg.get("mustard_pp_csv"),
             text_embeddings_npz_path=self.d_cfg.get("text_embeddings_npz"),
+            prosody_csv_path=self.d_cfg.get("prosody_csv"),
             val_ratio=self.d_cfg.get("val_ratio", 0.15),
             test_ratio=self.d_cfg.get("test_ratio", 0.15),
             seed=self.seed,
             split_strategy=self.d_cfg.get("split_strategy", "speaker"),
             dedup_mustard_family=self.d_cfg.get("dedup_mustard_family", True),
+            alignment_report_path=(
+                Path(self.o_cfg["comparison_dir"]) / "alignment_report.json"
+                if self.o_cfg.get("comparison_dir")
+                else None
+            ),
+            max_alignment_drop_ratio=self.d_cfg.get("max_alignment_drop_ratio", 0.10),
         )
         datasets = {
             split: FusionDataset(records, acoustic_dim=acoustic_dim)

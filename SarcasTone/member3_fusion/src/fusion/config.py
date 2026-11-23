@@ -87,7 +87,15 @@ def _resolve_paths(cfg: dict, repo_root: Path) -> dict:
     for section in ("data", "output"):
         block = cfg.get(section, {})
         for key, value in block.items():
-            if isinstance(value, str) and value and not os.path.isabs(value):
+            is_path_key = key.endswith(
+                ("_path", "_csv", "_json", "_npz", "_dir")
+            )
+            if (
+                is_path_key
+                and isinstance(value, str)
+                and value
+                and not os.path.isabs(value)
+            ):
                 cfg[section][key] = (repo_root / value).as_posix()
     return cfg
 

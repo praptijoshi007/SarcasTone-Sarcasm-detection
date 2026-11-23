@@ -1,0 +1,39 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: member4/docker/Dockerfile
+    container_name: sarcastone_backend
+    command: uvicorn member4.backend.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app:/app/SarcasTone
+      - MPLCONFIGDIR=/tmp/matplotlib_sarcastone
+    volumes:
+      - ../member3_fusion/checkpoints:/app/member3_fusion/checkpoints:ro
+      - ../member2_audio/outputs:/app/member2_audio/outputs:ro
+      - ../member1_text/handoff:/app/member1_text/handoff:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: member4/docker/Dockerfile
+    container_name: sarcastone_frontend
+    command: streamlit run member4/frontend/app.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+    environment:
+      - PYTHONPATH=/app:/app/SarcasTone
+      - MPLCONFIGDIR=/tmp/matplotlib_sarcastone
+    depends_on:
+      - backend
+    restart: unless-stopped

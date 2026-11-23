@@ -1,12 +1,12 @@
-"""FastAPI REST API Server for SarcasTone Multimodal Sarcasm Detection.
+"""FastAPI Application for SarcasTone Multimodal Sarcasm Detection.
 
-Endpoints:
-  POST /predict       : Full multimodal sarcasm prediction (audio upload + text + context)
-  POST /predict/text  : Text-only sarcasm prediction
-  POST /predict/audio : Audio-only sarcasm prediction (with ASR)
-  POST /batch-predict : Batch inference across multiple utterances
-  GET  /health        : Health check, system status, uptime
-  GET  /model-info    : Model architecture metadata, contract dimensions
+Exposes RESTful endpoints:
+- POST /predict: Full multimodal audio + text prediction
+- POST /predict/text: Text-only sarcasm classification
+- POST /predict/audio: Audio-only sarcasm analysis
+- POST /batch-predict: Batch prediction over multiple samples
+- GET /health: System health and component status
+- GET /model-info: Model architecture & contract metadata
 """
 from __future__ import annotations
 
@@ -17,365 +17,281 @@ import shutil
 import sys
 import tempfile
 import time
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
-# Add repo root to sys.path
-REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from member4.backend.config import CONFIG
+_REPO = Path(__file__).resolve().parents[2]
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
+
 from member4.backend.pipeline import MultimodalPipeline
 from member4.backend.schemas import (
+    AudioPredictionResponse,
     BatchPredictRequest,
+    BatchPredictResponse,
     HealthResponse,
     ModelInfoResponse,
-    PredictResponse,
-    TextPredictRequest,
-)
-from shared.constants import (
-    AUDIO_HIDDEN,
-    PROSODY_DIM,
-    QUALITY_DIM,
-    TARGET_SAMPLE_RATE,
-    TEXT_HIDDEN,
+    MultimodalPredictionResponse,
+    TextPredictionRequest,
+    TextPredictionResponse,
 )
 
-# Setup logging
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
 )
-log = logging.getLogger("sarcas_api")
+log = logging.getLogger("sarcastone.api")
 
-# Server start timestamp
-SERVER_START_TIME = time.time()
+# Configuration constants
+MAX_UPLOAD_SIZE_BYTES = 25 * 1024 * 1024  # 25 MB
+ALLOWED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".ogg", ".flac", ".m4a"}
 
-# Allowed audio file extensions & max size
-ALLOWED_EXTENSIONS = set(CONFIG.get("backend", {}).get("allowed_audio_formats", [".wav", ".mp3", ".m4a", ".flac", ".ogg"]))
-MAX_UPLOAD_SIZE = int(CONFIG.get("backend", {}).get("max_upload_size_bytes", 26214400))  # 25 MB
+# Initialize FastAPI App
+app = FastAPI(
+    title="SarcasTone Multimodal Sarcasm Detection API",
+    description="Production REST API serving multimodal sarcasm detection using textual semantics and speech prosody.",
+    version="1.0.0",
+)
 
-# Initialize pipeline
-pipeline = MultimodalPipeline()
+# CORS middleware for seamless Streamlit/React frontend interaction
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Try FastAPI setup
-try:
-    from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
-    from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import JSONResponse
+# Global pipeline instance
+pipeline: Optional[MultimodalPipeline] = None
 
-    app = FastAPI(
-        title="SarcasTone Multimodal Sarcasm Detection API",
-        description="Production API integrating Textual Semantics (RoBERTa) and Speech Prosody (Wav2Vec2 / GeMAPS) with Cross-Modal Attention and PSID.",
+
+def get_pipeline() -> MultimodalPipeline:
+    """Retrieve or lazily initialize the multimodal pipeline."""
+    global pipeline
+    if pipeline is None:
+        try:
+            pipeline = MultimodalPipeline()
+        except Exception as e:
+            log.error("Lazy pipeline init failed: %s", e)
+            pipeline = MultimodalPipeline()
+    return pipeline
+
+
+@app.on_event("startup")
+def startup_event():
+    """Load model checkpoints and initialize pipeline on application startup."""
+    get_pipeline()
+
+
+@app.get("/health", response_model=HealthResponse, tags=["Diagnostics"])
+def health_check() -> HealthResponse:
+    """Return health status of the API, runtime device, and active modalities."""
+    pipe = get_pipeline()
+    return HealthResponse(
+        status="healthy",
         version="1.0.0",
-        docs_url="/docs",
-        redoc_url="/redoc",
+        model_loaded=pipe is not None,
+        device=pipe.device if pipe else "cpu",
+        active_modalities=["text", "audio", "prosody", "fusion", "xai"],
     )
 
-    # Enable CORS
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
 
-    @app.get("/health", response_model=HealthResponse, tags=["System"])
-    async def health_check() -> HealthResponse:
-        """System health and hardware status."""
-        uptime = round(time.time() - SERVER_START_TIME, 2)
-        device = "cuda" if "torch" in sys.modules and getattr(sys.modules.get("torch"), "cuda", None) and sys.modules["torch"].cuda.is_available() else "cpu"
-        return HealthResponse(
-            status="healthy",
-            version="1.0.0",
-            service="SarcasTone Multimodal Prediction Server",
-            active_device=device,
-            modules={
-                "member1_text": (REPO_ROOT / "member1_text").is_dir(),
-                "member2_audio": (REPO_ROOT / "member2_audio").is_dir(),
-                "member3_fusion": (REPO_ROOT / "member3_fusion").is_dir(),
-                "member4_system": True,
-            },
-            uptime_seconds=uptime,
+@app.get("/model-info", response_model=ModelInfoResponse, tags=["Diagnostics"])
+def model_info() -> ModelInfoResponse:
+    """Return architecture specifications, layer dimensions, and interface contract."""
+    return ModelInfoResponse()
+
+
+@app.post("/predict", response_model=MultimodalPredictionResponse, tags=["Inference"])
+async def predict_multimodal_endpoint(
+    audio: Optional[UploadFile] = File(None),
+    text: Optional[str] = Form(None),
+    context: Optional[str] = Form(None),
+    speaker: Optional[str] = Form("UNKNOWN"),
+) -> MultimodalPredictionResponse:
+    """Multimodal prediction supporting both file upload and transcript."""
+    pipe = get_pipeline()
+
+    if audio is None and (text is None or not text.strip()):
+        raise HTTPException(
+            status_code=400,
+            detail="At least one modality (audio file or text transcript) must be provided.",
         )
 
-    @app.get("/model-info", response_model=ModelInfoResponse, tags=["System"])
-    async def model_info() -> ModelInfoResponse:
-        """Model architecture metadata, feature dimensions, and contract specs."""
-        return ModelInfoResponse(
-            architecture="SarcasTone Cross-Modal Attention with PSID & Adaptive Confidence Gating",
-            version="1.0.0",
-            text_encoder="RoBERTa-base (768-d SpanPooling)",
-            audio_encoder="Wav2Vec2 (768-d) + Handcrafted Prosody (32-d)",
-            fusion_mechanism="Dual Multi-Head Cross-Attention + Dynamic Confidence Gating",
-            dimensions={
-                "text_hidden": TEXT_HIDDEN,
-                "audio_hidden": AUDIO_HIDDEN,
-                "prosody_dim": PROSODY_DIM,
-                "quality_dim": QUALITY_DIM,
-                "fusion_logits": 2,
-            },
-            target_sample_rate_hz=TARGET_SAMPLE_RATE,
-            checkpoints_loaded={
-                "fusion_checkpoint": pipeline.fusion_model is not None,
-            },
-        )
-
-    @app.post("/predict", response_model=PredictResponse, tags=["Prediction"])
-    async def predict_multimodal_endpoint(
-        audio: Optional[UploadFile] = File(default=None),
-        text: Optional[str] = Form(default=None),
-        context: Optional[str] = Form(default=None),
-        speaker: Optional[str] = Form(default=None),
-    ) -> PredictResponse:
-        """Full multimodal sarcasm detection from uploaded audio, text, and dialogue context."""
-        tmp_audio_path: Optional[Path] = None
-
-        if audio is not None and audio.filename:
+    temp_audio_path: Optional[Path] = None
+    try:
+        if audio is not None:
             # Validate extension
-            ext = Path(audio.filename).suffix.lower()
-            if ext not in ALLOWED_EXTENSIONS:
+            filename = audio.filename or "uploaded_audio.wav"
+            ext = Path(filename).suffix.lower()
+            if ext not in ALLOWED_AUDIO_EXTENSIONS:
                 raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid audio format '{ext}'. Allowed: {sorted(list(ALLOWED_EXTENSIONS))}",
+                    status_code=400,
+                    detail=f"Unsupported audio format '{ext}'. Allowed: {list(ALLOWED_AUDIO_EXTENSIONS)}",
                 )
 
-            # Save uploaded audio to temp file
-            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            # Write file and check size limit
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
                 shutil.copyfileobj(audio.file, tmp)
-                tmp_audio_path = Path(tmp.name)
+                temp_audio_path = Path(tmp.name)
 
-            # Validate size
-            if tmp_audio_path.stat().st_size > MAX_UPLOAD_SIZE:
-                tmp_audio_path.unlink(missing_ok=True)
+            if temp_audio_path.stat().st_size > MAX_UPLOAD_SIZE_BYTES:
                 raise HTTPException(
-                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    detail=f"Audio file exceeds maximum size of {MAX_UPLOAD_SIZE / (1024*1024):.1f} MB",
+                    status_code=413,
+                    detail=f"File exceeds maximum allowable size of {MAX_UPLOAD_SIZE_BYTES // (1024*1024)} MB.",
                 )
 
-        # Parse context list if passed as JSON string or newline-separated
-        ctx_list = []
+        # Parse context list if passed as JSON string
+        parsed_context: Optional[list[str]] = None
         if context:
             try:
-                parsed = json.loads(context)
-                if isinstance(parsed, list):
-                    ctx_list = [str(x) for x in parsed]
+                loaded = json.loads(context)
+                if isinstance(loaded, list):
+                    parsed_context = [str(x) for x in loaded]
                 else:
-                    ctx_list = [str(parsed)]
+                    parsed_context = [str(context)]
             except Exception:
-                ctx_list = [c.strip() for c in context.split("\n") if c.strip()]
+                parsed_context = [str(context)]
 
-        try:
-            result = pipeline.predict(
-                audio_path=tmp_audio_path,
-                text=text,
-                context=ctx_list,
-                speaker=speaker,
-            )
-            return result
-        finally:
-            if tmp_audio_path and tmp_audio_path.is_file():
-                tmp_audio_path.unlink(missing_ok=True)
-
-    @app.post("/predict/text", response_model=PredictResponse, tags=["Prediction"])
-    async def predict_text_endpoint(payload: TextPredictRequest) -> PredictResponse:
-        """Text-only sarcasm prediction."""
-        if not payload.text or not payload.text.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Text cannot be empty.",
-            )
-        return pipeline.predict(
-            audio_path=None,
-            text=payload.text,
-            context=payload.context,
-            speaker=payload.speaker,
+        result = pipeline.predict(
+            audio_path=temp_audio_path,
+            text=text,
+            context=parsed_context,
+            speaker=speaker,
         )
 
-    @app.post("/predict/audio", response_model=PredictResponse, tags=["Prediction"])
-    async def predict_audio_endpoint(
-        audio: UploadFile = File(...),
-        speaker: Optional[str] = Form(default=None),
-    ) -> PredictResponse:
-        """Audio-only sarcasm prediction with automatic speech-to-text transcription."""
-        if not audio.filename:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No audio file provided.",
-            )
+        log.info(
+            "Predict [Multimodal] -> %s (conf: %.2f%%, text_w: %.2f, psid: %.2f)",
+            result.label,
+            result.confidence * 100.0,
+            result.text_weight,
+            result.psid_dissonance_score,
+        )
+        return MultimodalPredictionResponse(**result.to_dict())
 
-        ext = Path(audio.filename).suffix.lower()
-        if ext not in ALLOWED_EXTENSIONS:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid audio format '{ext}'. Allowed: {sorted(list(ALLOWED_EXTENSIONS))}",
-            )
-
-        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-            shutil.copyfileobj(audio.file, tmp)
-            tmp_path = Path(tmp.name)
-
-        try:
-            return pipeline.predict(
-                audio_path=tmp_path,
-                text=None,
-                context=None,
-                speaker=speaker,
-            )
-        finally:
-            if tmp_path.is_file():
-                tmp_path.unlink(missing_ok=True)
-
-    @app.post("/batch-predict", tags=["Prediction"])
-    async def batch_predict_endpoint(payload: BatchPredictRequest) -> Dict[str, Any]:
-        """Batch evaluation across multiple utterances."""
-        results = []
-        for item in payload.items:
-            res = pipeline.predict(
-                audio_path=item.audio_path,
-                text=item.text,
-                context=item.context,
-                speaker=item.speaker,
-            )
-            results.append({
-                "id": item.id,
-                "label": res.label,
-                "probabilities": res.probabilities,
-                "confidence": res.confidence,
-                "uncertain": res.uncertain,
-                "psid_dissonance_score": res.psid_dissonance_score,
-            })
-        return {
-            "total_items": len(results),
-            "results": results,
-        }
-
-except ImportError:
-    # Starlette fallback if fastapi package is not yet installed
-    from starlette.applications import Starlette
-    from starlette.responses import JSONResponse
-    from starlette.routing import Route
-
-    async def starlette_health(request: Any) -> JSONResponse:
-        uptime = round(time.time() - SERVER_START_TIME, 2)
-        return JSONResponse({
-            "status": "healthy",
-            "version": "1.0.0",
-            "service": "SarcasTone Multimodal Prediction Server (Starlette/Uvicorn)",
-            "uptime_seconds": uptime,
-            "modules": {
-                "member1_text": (REPO_ROOT / "member1_text").is_dir(),
-                "member2_audio": (REPO_ROOT / "member2_audio").is_dir(),
-                "member3_fusion": (REPO_ROOT / "member3_fusion").is_dir(),
-                "member4_system": True,
-            },
-        })
-
-    async def starlette_model_info(request: Any) -> JSONResponse:
-        return JSONResponse({
-            "architecture": "SarcasTone Cross-Modal Attention with PSID & Adaptive Confidence Gating",
-            "version": "1.0.0",
-            "text_encoder": "RoBERTa-base (768-d SpanPooling)",
-            "audio_encoder": "Wav2Vec2 (768-d) + Handcrafted Prosody (32-d)",
-            "fusion_mechanism": "Dual Multi-Head Cross-Attention + Dynamic Confidence Gating",
-            "dimensions": {
-                "text_hidden": TEXT_HIDDEN,
-                "audio_hidden": AUDIO_HIDDEN,
-                "prosody_dim": PROSODY_DIM,
-                "quality_dim": QUALITY_DIM,
-                "fusion_logits": 2,
-            },
-        })
-
-    async def starlette_predict_text(request: Any) -> JSONResponse:
-        try:
-            data = await request.json()
-        except Exception:
-            return JSONResponse({"detail": "Invalid JSON body."}, status_code=400)
-        text = data.get("text", "")
-        if not text or not str(text).strip():
-            return JSONResponse({"detail": "Text cannot be empty."}, status_code=400)
-        context = data.get("context", [])
-        speaker = data.get("speaker")
-        res = pipeline.predict(text=text, context=context, speaker=speaker)
-        resp_dict = res.model_dump() if hasattr(res, "model_dump") else (res.dict() if hasattr(res, "dict") else res.__dict__)
-        return JSONResponse(resp_dict)
-
-    async def starlette_predict_general(request: Any) -> JSONResponse:
-        ct = request.headers.get("content-type", "")
-        if "application/json" in ct:
+    finally:
+        # Clean up temporary audio file
+        if temp_audio_path and temp_audio_path.is_file():
             try:
-                data = await request.json()
+                temp_audio_path.unlink()
             except Exception:
-                return JSONResponse({"detail": "Invalid JSON."}, status_code=400)
-            text = data.get("text")
-            context = data.get("context")
-            speaker = data.get("speaker")
-            audio_path = data.get("audio_path")
-            res = pipeline.predict(audio_path=audio_path, text=text, context=context, speaker=speaker)
-            resp_dict = res.model_dump() if hasattr(res, "model_dump") else (res.dict() if hasattr(res, "dict") else res.__dict__)
-            return JSONResponse(resp_dict)
-        elif "multipart/form-data" in ct:
-            form = await request.form()
-            text = form.get("text")
-            speaker = form.get("speaker")
-            audio_file = form.get("audio")
-            tmp_path = None
-            if audio_file and hasattr(audio_file, "filename") and audio_file.filename:
-                ext = Path(audio_file.filename).suffix or ".wav"
-                with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-                    content = await audio_file.read()
-                    tmp.write(content)
-                    tmp_path = Path(tmp.name)
+                pass
+
+
+@app.post("/predict/text", response_model=TextPredictionResponse, tags=["Inference"])
+def predict_text_endpoint(req: TextPredictionRequest) -> TextPredictionResponse:
+    """Dedicated endpoint for text-only sarcasm detection."""
+    pipe = get_pipeline()
+    if not req.text.strip():
+        raise HTTPException(status_code=400, detail="Text field cannot be empty.")
+
+    t0 = time.perf_counter()
+    res = pipe.predict(audio_path=None, text=req.text, context=req.context, speaker=req.speaker)
+    dt_ms = (time.perf_counter() - t0) * 1000.0
+
+    return TextPredictionResponse(
+        label=res.label,
+        label_index=res.label_index,
+        confidence=res.confidence,
+        probabilities=res.probabilities,
+        entropy=res.entropy,
+        text=req.text,
+        top_tokens=[
+            {"token": t.token, "score": t.score, "position": t.position}
+            for t in res.explanation.top_text_tokens
+        ],
+        processing_time_ms=round(dt_ms, 2),
+    )
+
+
+@app.post("/predict/audio", response_model=AudioPredictionResponse, tags=["Inference"])
+async def predict_audio_endpoint(
+    audio: UploadFile = File(...),
+    speaker: Optional[str] = Form("UNKNOWN"),
+) -> AudioPredictionResponse:
+    """Dedicated endpoint for audio-only sarcasm and prosody analysis."""
+    pipe = get_pipeline()
+    ext = Path(audio.filename or "sample.wav").suffix.lower()
+    if ext not in ALLOWED_AUDIO_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported format '{ext}'. Allowed: {list(ALLOWED_AUDIO_EXTENSIONS)}",
+        )
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+        shutil.copyfileobj(audio.file, tmp)
+        temp_audio_path = Path(tmp.name)
+
+    try:
+        t0 = time.perf_counter()
+        res = pipe.predict(audio_path=temp_audio_path, text=None, speaker=speaker)
+        dt_ms = (time.perf_counter() - t0) * 1000.0
+
+        return AudioPredictionResponse(
+            label=res.label,
+            label_index=res.label_index,
+            confidence=res.confidence,
+            probabilities=res.probabilities,
+            entropy=res.entropy,
+            audio_quality_valid=res.audio_available,
+            quality_metrics={"is_valid": 1.0 if res.audio_available else 0.0, "clipping_ratio": 0.0, "silence_ratio": 0.0},
+            top_prosodic_features=[
+                {"feature_name": a.feature_name, "importance": a.importance, "value": a.value, "direction": a.direction}
+                for a in res.explanation.top_acoustic_features
+            ],
+            processing_time_ms=round(dt_ms, 2),
+        )
+    finally:
+        if temp_audio_path.is_file():
             try:
-                res = pipeline.predict(audio_path=tmp_path, text=str(text) if text else None, speaker=str(speaker) if speaker else None)
-                resp_dict = res.model_dump() if hasattr(res, "model_dump") else (res.dict() if hasattr(res, "dict") else res.__dict__)
-                return JSONResponse(resp_dict)
-            finally:
-                if tmp_path and tmp_path.is_file():
-                    tmp_path.unlink(missing_ok=True)
+                temp_audio_path.unlink()
+            except Exception:
+                pass
+
+
+@app.post("/batch-predict", response_model=BatchPredictResponse, tags=["Inference"])
+def batch_predict_endpoint(req: BatchPredictRequest) -> BatchPredictResponse:
+    """Process a batch of text/audio samples and produce aggregated analytics."""
+    pipe = get_pipeline()
+    if not req.items:
+        raise HTTPException(status_code=400, detail="Batch request contains no items.")
+
+    results: list[MultimodalPredictionResponse] = []
+    sarcastic_cnt = 0
+    non_sarcastic_cnt = 0
+    uncertain_cnt = 0
+    conf_sum = 0.0
+
+    for item in req.items:
+        res = pipe.predict(
+            audio_path=item.audio_path,
+            text=item.text,
+            context=item.context,
+            speaker=item.speaker or "UNKNOWN",
+        )
+        if res.label == "sarcastic":
+            sarcastic_cnt += 1
         else:
-            return JSONResponse({"detail": "Unsupported content type. Send JSON or multipart/form-data."}, status_code=400)
+            non_sarcastic_cnt += 1
+        if res.uncertain:
+            uncertain_cnt += 1
+        conf_sum += res.confidence
+        results.append(MultimodalPredictionResponse(**res.to_dict()))
 
-    async def starlette_batch_predict(request: Any) -> JSONResponse:
-        try:
-            data = await request.json()
-        except Exception:
-            return JSONResponse({"detail": "Invalid JSON."}, status_code=400)
-        items = data.get("items", [])
-        results = []
-        for it in items:
-            res = pipeline.predict(
-                audio_path=it.get("audio_path"),
-                text=it.get("text"),
-                context=it.get("context"),
-                speaker=it.get("speaker"),
-            )
-            results.append({
-                "id": it.get("id"),
-                "label": res.label,
-                "confidence": res.confidence,
-                "probabilities": res.probabilities,
-                "psid_dissonance_score": res.psid_dissonance_score,
-            })
-        return JSONResponse({"total_items": len(results), "results": results})
+    avg_conf = conf_sum / len(req.items) if req.items else 0.0
 
-    app = Starlette(routes=[
-        Route("/health", starlette_health, methods=["GET"]),
-        Route("/model-info", starlette_model_info, methods=["GET"]),
-        Route("/predict", starlette_predict_general, methods=["POST"]),
-        Route("/predict/text", starlette_predict_text, methods=["POST"]),
-        Route("/predict/audio", starlette_predict_general, methods=["POST"]),
-        Route("/batch-predict", starlette_batch_predict, methods=["POST"]),
-    ])
-
-
-if __name__ == "__main__":
-    import uvicorn
-    host = CONFIG.get("backend", {}).get("host", "0.0.0.0")
-    port = int(CONFIG.get("backend", {}).get("port", 8000))
-    print(f"Starting SarcasTone API on http://{host}:{port} ...")
-    uvicorn.run("member4.backend.main:app", host=host, port=port, reload=True)
+    return BatchPredictResponse(
+        total_processed=len(results),
+        sarcastic_count=sarcastic_cnt,
+        non_sarcastic_count=non_sarcastic_cnt,
+        uncertain_count=uncertain_cnt,
+        average_confidence=round(avg_conf, 4),
+        results=results,
+    )

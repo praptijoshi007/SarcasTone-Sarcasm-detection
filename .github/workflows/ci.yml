@@ -1,0 +1,55 @@
+name: SarcasTone Multimodal CI/CD
+
+on:
+  push:
+    branches: [main, master, "member4*"]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install system audio libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsndfile1 ffmpeg
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt || true
+          pip install fastapi uvicorn streamlit python-multipart pydantic PyYAML pandas numpy
+
+      - name: Verify 3-Way Multimodal Synchronization
+        run: |
+          PYTHONPATH=. python3.11 verify_all_members_sync.py
+
+      - name: Run Core Test Suite
+        run: |
+          PYTHONPATH=. python3.11 -m unittest discover tests -v
+
+      - name: Run Member 1 Tests
+        run: |
+          PYTHONPATH=. python3.11 -m unittest discover -s member1_text/tests -v
+
+      - name: Run Member 4 System Tests
+        run: |
+          PYTHONPATH=. pytest member4/tests -v
+
+      - name: Run Robustness Evaluation
+        run: |
+          PYTHONPATH=. python member4/experiments/robustness.py

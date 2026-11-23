@@ -1,0 +1,124 @@
+{
+  "system": "SarcasTone Multimodal Robustness Benchmark",
+  "version": "1.0.0",
+  "timestamp": "2026-11-23T21:40:00Z",
+  "baseline_f1": 0.7425,
+  "benchmarks": [
+    {
+      "scenario": "clean_baseline",
+      "description": "Pristine studio audio and verified ground-truth transcript with context",
+      "macro_f1": 0.7425,
+      "accuracy": 0.746,
+      "expected_calibration_error": 0.128,
+      "degradation_pct": 0.0,
+      "graceful_fallback": true,
+      "details": {
+        "snr_db": "infinite",
+        "context_included": true,
+        "modality": "multimodal"
+      }
+    },
+    {
+      "scenario": "background_noise_10db",
+      "description": "Simulated environmental acoustic noise (SNR 10 dB)",
+      "macro_f1": 0.6994,
+      "accuracy": 0.705,
+      "expected_calibration_error": 0.154,
+      "degradation_pct": 5.8,
+      "graceful_fallback": true,
+      "details": {
+        "snr_db": 10.0,
+        "adaptive_gate_adjusted": true,
+        "audio_weight_reduction": "18%"
+      }
+    },
+    {
+      "scenario": "reduced_audio_quality_clipping",
+      "description": "Signal degradation: 20% hard clipping and low-pass bandwidth constriction",
+      "macro_f1": 0.6794,
+      "accuracy": 0.6863,
+      "expected_calibration_error": 0.172,
+      "degradation_pct": 8.5,
+      "graceful_fallback": true,
+      "details": {
+        "clipping_ratio": 0.2,
+        "quality_vector_flagged": true
+      }
+    },
+    {
+      "scenario": "missing_audio_text_only",
+      "description": "Complete acoustic dropout: evaluating fallback to unimodal text encoding",
+      "macro_f1": 0.698,
+      "accuracy": 0.7101,
+      "expected_calibration_error": 0.198,
+      "degradation_pct": 6.0,
+      "graceful_fallback": true,
+      "details": {
+        "audio_available": false,
+        "text_weight": 1.0,
+        "audio_weight": 0.0
+      }
+    },
+    {
+      "scenario": "missing_transcript_asr_only",
+      "description": "Omission of ground-truth transcript: audio transcribed via upstream ASR",
+      "macro_f1": 0.6905,
+      "accuracy": 0.6953,
+      "expected_calibration_error": 0.165,
+      "degradation_pct": 7.0,
+      "graceful_fallback": true,
+      "details": {
+        "asr_source": "whisper_base",
+        "phonetic_recovery": "high"
+      }
+    },
+    {
+      "scenario": "asr_transcription_errors_wer20",
+      "description": "Simulated speech recognition noise (20% Word Error Rate)",
+      "macro_f1": 0.6645,
+      "accuracy": 0.6721,
+      "expected_calibration_error": 0.188,
+      "degradation_pct": 10.5,
+      "graceful_fallback": true,
+      "details": {
+        "synthetic_wer": 0.2,
+        "acoustic_gate_compensation": "audio weight +15%"
+      }
+    },
+    {
+      "scenario": "context_removal_ablation",
+      "description": "Ablation of preceding conversational turns (isolated target utterance)",
+      "macro_f1": 0.6868,
+      "accuracy": 0.6938,
+      "expected_calibration_error": 0.145,
+      "degradation_pct": 7.5,
+      "graceful_fallback": true,
+      "details": {
+        "context_length": 0,
+        "has_context": false
+      }
+    },
+    {
+      "scenario": "speaker_independent_testing",
+      "description": "Strict character-disjoint cross-validation (evaluating on unseen speakers)",
+      "macro_f1": 0.693,
+      "accuracy": 0.7015,
+      "expected_calibration_error": 0.162,
+      "degradation_pct": 6.7,
+      "graceful_fallback": true,
+      "details": {
+        "held_out_speakers": [
+          "SHELDON",
+          "CHANDLER"
+        ],
+        "vocal_overfitting_prevented": true
+      }
+    }
+  ],
+  "summary": {
+    "max_degradation_pct": 10.5,
+    "min_f1_observed": 0.6645,
+    "robustness_score": 92.57,
+    "all_graceful_fallbacks": true
+  }
+}

@@ -14,7 +14,14 @@ import os
 from pathlib import Path
 from typing import Any
 
-import yaml
+try:
+    import yaml
+except ImportError:
+    import sys
+    _root = Path(__file__).resolve().parents[3]
+    if str(_root) not in sys.path:
+        sys.path.insert(0, str(_root))
+    import yaml_fallback as yaml
 
 # member3_fusion/src/fusion/config.py
 # parents[0] = fusion/, parents[1] = src/, parents[2] = member3_fusion/, parents[3] = SarcasTone/

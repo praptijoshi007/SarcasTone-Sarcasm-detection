@@ -95,11 +95,23 @@ def verify_sync() -> bool:
         from member3_fusion.src.training.dataset import load_mustard_fusion_records
 
         d_cfg = yaml.safe_load(m3_cfg_path.read_text(encoding="utf-8"))["data"]
+        pred_csv = d_cfg.get("audio_predictions_csv")
+        pred_csv_path = (REPO_ROOT / pred_csv) if pred_csv else (REPO_ROOT / "member2_audio" / "outputs" / "handoff" / "mustard_audio_predictions.csv")
+        prosody_csv = d_cfg.get("prosody_csv")
+        prosody_csv_path = (REPO_ROOT / prosody_csv) if prosody_csv else (REPO_ROOT / "member2_audio" / "outputs" / "handoff" / "mustard_prosody_features_32_praat.csv")
+        w2v_npz = d_cfg.get("wav2vec2_embeddings_npz")
+        w2v_path = (REPO_ROOT / w2v_npz) if w2v_npz else (REPO_ROOT / "member2_audio" / "outputs" / "handoff" / "mustard_wav2vec2_embeddings.npz")
+        txt_npz = d_cfg.get("text_embeddings_npz")
+        txt_path = (REPO_ROOT / txt_npz) if txt_npz else (REPO_ROOT / "member1_text" / "handoff" / "mustard_roberta_embeddings.npz")
+
         splits, acoustic_dim = load_mustard_fusion_records(
             mustard_json_path=REPO_ROOT / d_cfg["mustard_json"],
             handoff_csv_path=REPO_ROOT / d_cfg["audio_handoff_csv"],
             quality_csv_path=REPO_ROOT / d_cfg["audio_quality_csv"],
-            predictions_csv_path=REPO_ROOT / d_cfg["audio_predictions_csv"],
+            predictions_csv_path=pred_csv_path,
+            prosody_csv_path=prosody_csv_path,
+            wav2vec2_npz_path=w2v_path,
+            text_embeddings_npz_path=txt_path,
             split_strategy="speaker",
         )
         total_m3_records = sum(len(v) for v in splits.values())

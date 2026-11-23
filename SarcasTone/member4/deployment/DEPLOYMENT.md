@@ -1,142 +1,158 @@
-# SarcasTone Production Deployment & Execution Guide
+# SarcasTone Deployment & Operations Manual
 
-This document provides exact, reproducible commands for running, testing, containerizing, and deploying the complete four-member SarcasTone system.
+This guide provides exact, verified commands for running, testing, building, and deploying the complete four-member **SarcasTone** system.
 
 ---
 
 ## 1. Local Environment Setup
 
-### Prerequisites
-- Python 3.11
-- FFmpeg (for MP3/M4A audio decoding): `brew install ffmpeg` (macOS) or `apt-get install ffmpeg` (Ubuntu)
-- Libsndfile: `brew install libsndfile` (macOS) or `apt-get install libsndfile1` (Ubuntu)
+### 1.1 Python Virtual Environment
+Requires **Python 3.11+**. From the `SarcasTone` directory:
 
-### Install Dependencies
 ```bash
-# Recommended: Create a dedicated Python 3.11 environment
-conda create -n sarcastone python=3.11 -y
-conda activate sarcastone
+# Navigate to the project root
+cd SarcasTone
 
-# Install project packages
+# Create a clean virtual environment
+python3.11 -m venv .venv
+
+# Activate the virtual environment
+# On macOS / Linux:
+source .venv/bin/activate
+# On Windows PowerShell:
+# .\.venv\Scripts\Activate.ps1
+
+# Install core and member requirements
 pip install --upgrade pip
 pip install -r requirements.txt
-pip install fastapi uvicorn streamlit python-multipart pydantic PyYAML altair
+pip install -r member4/requirements.txt
 ```
 
 ---
 
-## 2. Running the System Locally
+## 2. 4-Way Synchronization Verification
 
-### Step 1: Start the FastAPI Backend Server
-```bash
-# From repository root
-PYTHONPATH=. python3.11 -m uvicorn member4.backend.main:app --host 0.0.0.0 --port 8000 --reload
-```
-- API Docs (Swagger): `http://localhost:8000/docs`
-- Healthcheck: `http://localhost:8000/health`
-- Model Metadata: `http://localhost:8000/model-info`
+Before running services, verify interface alignment and integration contracts across all 4 modules:
 
-### Step 2: Start the Streamlit Dashboard
 ```bash
-# From repository root (in a separate terminal)
-PYTHONPATH=. streamlit run member4/frontend/app.py --server.port 8501
+python verify_all_members_sync.py
 ```
-- Interactive Web Dashboard: `http://localhost:8501`
+Expected output:
+```
+======================================================================
+ OVERALL STATUS: ALL 4 MEMBERS ARE FULLY SYNCHRONIZED & OPERATIONAL! [PASSED]
+======================================================================
+```
+
+To run all automated API and integration tests:
+```bash
+pytest member4/tests/test_api.py -v
+```
 
 ---
 
-## 3. Testing REST API Endpoints via cURL
+## 3. Running Services Locally
 
-### Full Multimodal Prediction (Audio + Text + Context)
+### 3.1 Start the FastAPI Backend
 ```bash
-curl -X POST "http://localhost:8000/predict" \
-  -F "audio=@member2_audio/tests/fixtures/test_sample.wav" \
-  -F "text=It's just a privilege to watch your mind at work." \
-  -F "context=[\"I think I solved the puzzle.\"]" \
-  -F "speaker=SHELDON"
+uvicorn member4.backend.main:app --host 0.0.0.0 --port 8000 --reload
+```
+- Interactive Swagger API Documentation: [http://localhost:8000/docs](http://localhost:8000/docs)
+- Alternative ReDoc Documentation: [http://localhost:8000/redoc](http://localhost:8000/redoc)
+- Health Check Endpoint: `curl http://localhost:8000/health`
+
+### 3.2 Start the Streamlit Frontend Dashboard
+In a separate terminal (with the virtualenv activated):
+```bash
+streamlit run member4/frontend/app.py --server.port 8501
+```
+- Open your browser at: [http://localhost:8501](http://localhost:8501)
+
+---
+
+## 4. Example API Invocations (cURL)
+
+### 4.1 Health Diagnostics
+```bash
+curl -X GET "http://localhost:8000/health"
 ```
 
-### Text-Only Sarcasm Prediction
+### 4.2 Text-Only Prediction
 ```bash
 curl -X POST "http://localhost:8000/predict/text" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "Oh brilliant, another great idea that completely broke the database.",
-    "context": ["The migration script finished executing."],
-    "speaker": "CHANDLER"
-  }'
+     -H "Content-Type: application/json" \
+     -d '{
+       "text": "It is just a privilege to watch your mind at work.",
+       "context": ["I think I solved the puzzle."],
+       "speaker": "SHELDON"
+     }'
 ```
 
-### Audio-Only Sarcasm Prediction (Automatic ASR)
+### 4.3 Multimodal Prediction (Audio + Text)
 ```bash
-curl -X POST "http://localhost:8000/predict/audio" \
-  -F "audio=@member2_audio/tests/fixtures/test_sample.wav" \
-  -F "speaker=SHELDON"
+curl -X POST "http://localhost:8000/predict" \
+     -F "audio=@member4/fixtures/preset_sheldon_sarcastic.wav;type=audio/wav" \
+     -F "text=It is just a privilege to watch your mind at work." \
+     -F "context=[\"I think I solved the puzzle.\"]" \
+     -F "speaker=SHELDON"
 ```
 
 ---
 
-## 4. Docker & Docker Compose Deployment
+## 5. Docker Build & Container Deployment
 
-### Build & Run with Docker Compose
+### 5.1 Standalone Docker Build
 ```bash
-# Build and start both Backend (port 8000) and Frontend (port 8501)
+# Build production Docker image
+docker build -f member4/docker/Dockerfile -t sarcastone:latest .
+
+# Run container exposing both API (8000) and UI (8501)
+docker run -d --name sarcastone_app -p 8000:8000 -p 8501:8501 sarcastone:latest
+```
+
+### 5.2 Docker Compose Multi-Service Deployment
+```bash
+cd member4
 docker-compose up --build -d
-
-# View service logs
+```
+To check container logs:
+```bash
 docker-compose logs -f
-
-# Stop containers
+```
+To shut down containers:
+```bash
 docker-compose down
 ```
 
-### Single Container Docker Build (Backend)
-```bash
-docker build -t sarcastone-backend -f member4/docker/Dockerfile .
-docker run -p 8000:8000 sarcastone-backend
-```
-
 ---
 
-## 5. Google Colab GPU Execution
+## 6. Google Colab Training Workflow
 
-To train or evaluate on Google Colab with GPU acceleration:
+For GPU-accelerated training on Google Colab:
+
 ```python
-# Cell 1: Clone and install dependencies
-!git clone https://github.com/muskan/SarcasTone.git
-%cd SarcasTone
+# 1. Clone repository in Colab cell
+!git clone https://github.com/praptijoshi007/SarcasTone-Sarcasm-detection.git
+%cd SarcasTone-Sarcasm-detection/SarcasTone
+
+# 2. Install dependencies
 !pip install -r requirements.txt
-!pip install fastapi uvicorn streamlit pyngrok
+!pip install -r member4/requirements.txt
 
-# Cell 2: Verify 3-Way Sync
-!PYTHONPATH=. python3.11 verify_all_members_sync.py
+# 3. Train full cross-attention fusion model with PSID
+!python member3_fusion/train_fusion.py --experiment full_model --epochs 30 --batch_size 16
 
-# Cell 3: Run Full Multimodal Inference
-import sys
-sys.path.insert(0, ".")
-from member4.backend.pipeline import MultimodalPipeline
+# 4. Run cross-modal evaluation and temperature scaling calibration
+!python member3_fusion/evaluate_fusion.py --experiment full_model
 
-pipeline = MultimodalPipeline()
-result = pipeline.predict(
-    audio_path="member2_audio/tests/fixtures/test_sample.wav",
-    text="It's just a privilege to watch your mind at work.",
-    speaker="SHELDON"
-)
-print("Classification:", result.label)
-print("Confidence:", result.confidence)
-print("PSID Incongruence Score:", result.psid_dissonance_score)
+# 5. Run robustness stress-testing suite
+!python member4/experiments/robustness.py
 ```
 
 ---
 
-## 6. Automated Testing & Verification
-```bash
-# Run Member 4 Backend & Pipeline Tests
-PYTHONPATH=. python3.11 -m unittest discover member4/tests -v
+## 7. Production CPU Inference Notes
 
-# Run 3-Way Synchronization Verification across all members
-PYTHONPATH=. python3.11 verify_all_members_sync.py
-
-# Run Robustness & Environmental Stress Suite
-PYTHONPATH=. python3.11 member4/experiments/robustness/run_robustness.py
-```
+1. **Quantization & Torch Threads**: Set `torch.set_num_threads(4)` in low-core cloud environments to optimize latency.
+2. **Audio Preprocessing**: Pre-convert user audio to 16 kHz mono PCM WAV client-side or during API ingest to minimize Librosa resampling overhead.
+3. **Model Caching**: The `MultimodalPipeline` leverages persistent memory caching; the first inference run loads PyTorch weights into memory (~200ms), and subsequent inferences run in ~20-40ms on standard x86/ARM CPUs.

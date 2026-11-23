@@ -1,138 +1,148 @@
-"""Pydantic request and response schemas for SarcasTone Member 4 REST API."""
+"""Pydantic schemas for the SarcasTone FastAPI backend."""
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
-
-try:
-    from pydantic import BaseModel, Field
-except ImportError:
-    # Minimal dataclass fallback if pydantic is not installed
-    def _to_jsonable(obj: Any) -> Any:
-        if hasattr(obj, "__dict__"):
-            return {k: _to_jsonable(v) for k, v in obj.__dict__.items()}
-        elif isinstance(obj, list):
-            return [_to_jsonable(x) for x in obj]
-        elif isinstance(obj, tuple):
-            return [_to_jsonable(x) for x in obj]
-        elif isinstance(obj, dict):
-            return {k: _to_jsonable(v) for k, v in obj.items()}
-        return obj
-
-    class BaseModel:  # type: ignore
-        def __init__(self, **kwargs: Any) -> None:
-            for k, v in kwargs.items():
-                setattr(self, k, v)
-
-        def dict(self) -> Dict[str, Any]:
-            return _to_jsonable(self)
-
-        def model_dump(self) -> Dict[str, Any]:
-            return _to_jsonable(self)
-
-    def Field(*args: Any, **kwargs: Any) -> Any:  # type: ignore
-        return kwargs.get("default", None)
-
-
-class TextPredictRequest(BaseModel):
-    """Request payload for text-only sarcasm prediction."""
-    text: str = Field(..., description="The utterance text to classify")
-    context: Optional[List[str]] = Field(default=None, description="Preceding dialogue turns")
-    speaker: Optional[str] = Field(default=None, description="Speaker identifier")
-
-
-class BatchItem(BaseModel):
-    id: str = Field(..., description="Unique utterance ID")
-    text: Optional[str] = Field(default=None, description="Transcript text")
-    context: Optional[List[str]] = Field(default=None, description="Dialogue context")
-    audio_path: Optional[str] = Field(default=None, description="Server-side audio path")
-    speaker: Optional[str] = Field(default=None, description="Speaker name")
-
-
-class BatchPredictRequest(BaseModel):
-    """Batch prediction request."""
-    items: List[BatchItem] = Field(..., description="List of items to predict")
-
-
-class TokenAttribution(BaseModel):
-    token: str
-    score: float
-
-
-class AcousticAttribution(BaseModel):
-    feature_name: str
-    feature_value: float
-    importance_score: float
-    direction: str  # "promotes_sarcasm" or "promotes_literal"
-
-
-class MultimodalExplanation(BaseModel):
-    summary: str
-    top_text_tokens: List[TokenAttribution] = Field(default_factory=list)
-    top_acoustic_features: List[AcousticAttribution] = Field(default_factory=list)
-    dissonance_explanation: str
-    gating_explanation: str
-    attention_faithfulness_note: str = (
-        "Note: Attention weights and heuristic saliency indicate model focus "
-        "and feature divergence, but should not be interpreted as absolute causal proofs."
-    )
-
-
-class PredictResponse(BaseModel):
-    """Comprehensive multimodal sarcasm prediction response."""
-    label: str = Field(..., description="'sarcastic' or 'non_sarcastic'")
-    label_index: int = Field(..., description="1 for sarcastic, 0 for non-sarcastic")
-    probabilities: Dict[str, float] = Field(..., description="Calibrated class probabilities")
-    confidence: float = Field(..., description="Prediction confidence (max probability)")
-    entropy: float = Field(..., description="Predictive entropy in nats")
-    uncertain: bool = Field(..., description="Whether prediction exceeds uncertainty threshold")
-    uncertainty_reason: Optional[str] = None
-
-    transcript: str = Field(..., description="Utterance transcript")
-    transcript_source: str = Field(..., description="'user_provided', 'asr_transcribed', or 'none'")
-    text_available: bool = True
-    audio_available: bool = False
-    modalities_used: List[str] = Field(default_factory=list)
-
-    modality_weights: Dict[str, float] = Field(
-        default_factory=lambda: {"text": 0.5, "audio": 0.5},
-        description="Adaptive confidence gating weights",
-    )
-    psid_dissonance_score: float = Field(
-        default=0.0, description="Prosody-Semantic Incongruence score"
-    )
-    cosine_agreement: Optional[float] = Field(
-        default=None, description="Cross-modal latent cosine agreement"
-    )
-
-    audio_quality: Dict[str, Any] = Field(default_factory=dict)
-    prosody_summary: Dict[str, Any] = Field(default_factory=dict)
-    emotion_prediction: Dict[str, Any] = Field(default_factory=dict)
-
-    unimodal_comparisons: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Individual predictions for text-only vs audio-only vs multimodal",
-    )
-    explanation: Optional[MultimodalExplanation] = None
-
-    latency_ms: float = 0.0
-    timestamp: str = ""
+from pydantic import BaseModel, Field
 
 
 class HealthResponse(BaseModel):
     status: str = "healthy"
     version: str = "1.0.0"
-    service: str = "SarcasTone Multimodal Prediction Server"
-    active_device: str = "cpu"
-    modules: Dict[str, bool] = Field(default_factory=dict)
-    uptime_seconds: float = 0.0
+    model_loaded: bool = True
+    device: str = "cpu"
+    active_modalities: list[str] = Field(default_factory=lambda: ["text", "audio", "prosody", "fusion"])
 
 
 class ModelInfoResponse(BaseModel):
-    architecture: str
-    version: str
-    text_encoder: str
-    audio_encoder: str
-    fusion_mechanism: str
-    dimensions: Dict[str, int]
-    target_sample_rate_hz: int
-    checkpoints_loaded: Dict[str, bool]
+    model_name: str = "SarcasTone Multimodal Sarcasm Classifier"
+    architecture: str = "CrossModalAttention + PSID + ConfidenceGate"
+    upstream_modules: dict[str, str] = Field(default_factory=lambda: {
+        "member1_text": "RoBERTa-base Span Pooling [768-d]",
+        "member2_audio": "Wav2Vec2.0 + 32-d Prosody + 6-d Quality [768-d]",
+        "member3_fusion": "Stacked Bidirectional Cross-Attention + PSID [512-d]",
+        "member4_xai": "Captum Integrated Gradients + Uncertainty Calibration",
+    })
+    interface_contract: dict[str, Any] = Field(default_factory=lambda: {
+        "text_hidden": 768,
+        "audio_hidden": 768,
+        "prosody_dim": 32,
+        "quality_dim": 6,
+        "sample_rate_hz": 16000,
+        "classes": ["non_sarcastic", "sarcastic"],
+    })
+    checkpoint_status: str = "production_ready"
+
+
+class TokenAttributionSchema(BaseModel):
+    token: str
+    score: float
+    position: int
+
+
+class AcousticAttributionSchema(BaseModel):
+    feature_name: str
+    importance: float
+    value: float
+    direction: str
+
+
+class ExplanationSchema(BaseModel):
+    label: str
+    confidence: float
+    entropy: float
+    uncertain: bool
+    modality_weights: dict[str, float]
+    psid_dissonance_score: float
+    cosine_agreement: Optional[float] = None
+    top_text_tokens: list[TokenAttributionSchema] = Field(default_factory=list)
+    top_acoustic_features: list[AcousticAttributionSchema] = Field(default_factory=list)
+    methodology_note: str
+    narrative: str
+
+
+class BaselineResultSchema(BaseModel):
+    model_name: str
+    model_type: str
+    label: str
+    label_index: int
+    confidence: float
+    probabilities: dict[str, float]
+    description: str
+    transcript: Optional[str] = None
+    extra_metrics: dict[str, Any] = Field(default_factory=dict)
+
+
+class MultimodalPredictionResponse(BaseModel):
+    label: str
+    label_index: int
+    confidence: float
+    probabilities: dict[str, float]
+    entropy: float
+    uncertain: bool
+    text_weight: float
+    audio_weight: float
+    modality_weights: dict[str, float]
+    psid_dissonance_score: float
+    cosine_agreement: Optional[float] = None
+    transcript: str
+    transcript_is_ground_truth: bool
+    audio_available: bool
+    text_available: bool
+    speaker: Optional[str] = None
+    explanation: ExplanationSchema
+    processing_time_ms: float = 0.0
+    text_only: Optional[BaselineResultSchema] = None
+    audio_only: Optional[BaselineResultSchema] = None
+    direct_concat: Optional[BaselineResultSchema] = None
+    cross_modal_fusion: Optional[BaselineResultSchema] = None
+    comparison_summary: list[BaselineResultSchema] = Field(default_factory=list)
+
+
+class TextPredictionRequest(BaseModel):
+    text: str
+    context: Optional[list[str]] = None
+    speaker: Optional[str] = "UNKNOWN"
+
+
+class TextPredictionResponse(BaseModel):
+    label: str
+    label_index: int
+    confidence: float
+    probabilities: dict[str, float]
+    entropy: float
+    text: str
+    top_tokens: list[TokenAttributionSchema] = Field(default_factory=list)
+    processing_time_ms: float = 0.0
+
+
+class AudioPredictionResponse(BaseModel):
+    label: str
+    label_index: int
+    confidence: float
+    probabilities: dict[str, float]
+    entropy: float
+    audio_quality_valid: bool
+    quality_metrics: dict[str, float]
+    top_prosodic_features: list[AcousticAttributionSchema] = Field(default_factory=list)
+    processing_time_ms: float = 0.0
+
+
+class BatchItemRequest(BaseModel):
+    id: Optional[str] = None
+    text: Optional[str] = None
+    audio_path: Optional[str] = None
+    context: Optional[list[str]] = None
+    speaker: Optional[str] = "UNKNOWN"
+
+
+class BatchPredictRequest(BaseModel):
+    items: list[BatchItemRequest]
+
+
+class BatchPredictResponse(BaseModel):
+    total_processed: int
+    sarcastic_count: int
+    non_sarcastic_count: int
+    uncertain_count: int
+    average_confidence: float
+    results: list[MultimodalPredictionResponse]

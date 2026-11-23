@@ -55,7 +55,7 @@ def parse_args() -> argparse.Namespace:
         help="Experiment name matching a key in configs.experiments (default: full_model)",
     )
     p.add_argument("--epochs",      type=int, default=None, help="Override epochs in config")
-    p.add_argument("--batch-size",  type=int, default=None, dest="batch_size",
+    p.add_argument("--batch-size", "--batch_size", type=int, default=None, dest="batch_size",
                    help="Override batch size")
     p.add_argument("--seed",        type=int, default=None, help="Override random seed")
     p.add_argument("--resume",      default=None,

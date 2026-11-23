@@ -48,8 +48,8 @@ jobs:
 
       - name: Run Member 4 System Tests
         run: |
-          PYTHONPATH=. python3.11 -m unittest discover -s member4/tests -v
+          PYTHONPATH=. pytest member4/tests -v
 
       - name: Run Robustness Evaluation
         run: |
-          PYTHONPATH=. python3.11 member4/experiments/robustness/run_robustness.py
+          PYTHONPATH=. python member4/experiments/robustness.py

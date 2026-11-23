@@ -1,65 +1,48 @@
-# ==============================================================================
-# SarcasTone Member 4 — Unified System & Production Deployment Configuration
-# ==============================================================================
-
-project:
-  name: "SarcasTone-Member4"
-  module: "member4_system"
+system:
+  name: "SarcasTone"
   version: "1.0.0"
-  description: "Multimodal Sarcasm Detection System with Textual Semantics, Speech Prosody, Explainability, and Robustness."
+  description: "Multimodal Sarcasm Detection Using Textual Semantics and Speech Prosody"
   seed: 42
+  environment: "production"
 
 interface_contract:
   text_hidden: 768
   audio_hidden: 768
-  context_hidden: 768
   prosody_dim: 32
   quality_dim: 6
-  fusion_logits: 2
   sample_rate_hz: 16000
-  label_map:
-    0: "non_sarcastic"
-    1: "sarcastic"
+  fusion_hidden: 512
+  classifier_hidden: 256
+  psid_proj_dim: 128
+  psid_disagree_dim: 128
+  num_labels: 2
+  classes:
+    - "non_sarcastic"
+    - "sarcastic"
 
 backend:
   host: "0.0.0.0"
   port: 8000
-  max_upload_size_bytes: 26214400  # 25 MB
+  max_upload_size_mb: 25
   allowed_audio_formats:
     - ".wav"
     - ".mp3"
-    - ".m4a"
     - ".ogg"
     - ".flac"
-  request_timeout_seconds: 30
-  prediction_log_path: "member4/backend/logs/predictions.jsonl"
-  cors_origins:
-    - "*"
+  checkpoint_dir: "member3_fusion/checkpoints/full_model"
 
 frontend:
-  title: "SarcasTone Multimodal Sarcasm Dashboard"
-  backend_api_url: "http://localhost:8000"
+  title: "SarcasTone: Multimodal Sarcasm Intelligence"
   port: 8501
   theme: "dark"
 
-model:
-  temperature: 1.25
-  uncertainty_threshold: 0.55
-  decision_threshold: 0.50
-  psid_enabled: true
-  adaptive_gating_enabled: true
-  fusion_checkpoint: "member3_fusion/checkpoints/full_model/checkpoint"
-  text_checkpoint: "member1_text/outputs/checkpoints/mustard__sarcasm__roberta-base"
+xai:
+  captum_n_steps: 32
+  top_tokens_count: 5
+  top_acoustic_count: 5
+  entropy_threshold: 0.55
 
-explainability:
-  captum_n_steps: 25
-  captum_internal_batch_size: 4
-  prosody_top_k: 8
-  uncertainty_method: "entropy"
-  warn_attention_faithfulness: true
-
-robustness:
-  snr_levels_db: [30, 20, 10, 5, 0, -5]
-  clipping_ratios: [0.0, 0.1, 0.2, 0.5]
-  wer_noise_levels: [0.0, 0.05, 0.15, 0.30]
-  eval_dataset: "datasets/MUSTARD/sarcasm_data.json"
+mlops:
+  mlflow_tracking_uri: "mlruns"
+  experiment_name: "sarcastone_multimodal_evaluation"
+  model_registry_name: "SarcasTone_CrossAttention_PSID"

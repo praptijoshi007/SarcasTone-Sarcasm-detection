@@ -95,13 +95,13 @@ data:
   mustard_pp_csv: null
 
   # Actual Member 2 handoffs (paths resolve from the SarcasTone directory).
-  audio_handoff_csv: "../member2_audio/outputs/handoff/mustard_acoustic_features_116.csv"
-  prosody_csv: "../member2_audio/outputs/handoff/mustard_prosody_features_32_praat.csv"
-  audio_quality_csv: "../member2_audio/outputs/handoff/mustard_audio_quality_contract_6d_praat.csv"
-  audio_predictions_csv: null
+  audio_handoff_csv: "member2_audio/outputs/handoff/mustard_acoustic_features_116.csv"
+  prosody_csv: "member2_audio/outputs/handoff/mustard_prosody_features_32_praat.csv"
+  audio_quality_csv: "member2_audio/outputs/handoff/mustard_audio_quality_contract_6d_praat.csv"
+  audio_predictions_csv: "member2_audio/outputs/handoff/mustard_audio_predictions.csv"
 
   # Wav2Vec2 pooled embeddings (produced by Member 2).
-  wav2vec2_embeddings_npz: "../member2_audio/outputs/handoff/mustard_wav2vec2_embeddings.npz"
+  wav2vec2_embeddings_npz: "member2_audio/outputs/handoff/mustard_wav2vec2_embeddings.npz"
 
   # Member 1's actual handoff: ids, utterance/context [N,768].
   text_embeddings_npz: "member1_text/handoff/mustard_roberta_embeddings.npz"

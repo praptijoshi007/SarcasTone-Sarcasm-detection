@@ -1,119 +1,86 @@
-# SarcasTone — Member 4: System Integration, Explainability, Robustness & Deployment
+# Member 4: Explainability, Robustness, Backend, Frontend & Deployment
 
-This module is the capstone integration component of **SarcasTone: Multimodal Sarcasm Detection Using Textual Semantics and Speech Prosody**.
-
----
-
-## 🏛️ System Architecture
-
-Member 4 orchestrates the entire multimodal pipeline by unifying the upstream specialized modules:
-
-```
-+----------------------------------------------------------------------------------+
-|                              SARCASTONE PIPELINE                                 |
-|                                                                                  |
-|  [Text + Context] ---> Member 1: RoBERTa-base (768-d SpanPooling)                |
-|                                         |                                        |
-|  [Speech Audio]   ---> Member 2: 32 Prosody + 6 Quality Descriptors (16kHz)     |
-|                                         |                                        |
-|  [Fusion Engine]  ---> Member 3: Dual Cross-Attention + PSID Incongruence       |
-|                                         |                                        |
-|  [Capstone MLOps] ---> Member 4: Adaptive Gating, Calibration, FastAPI, Streamlit|
-+----------------------------------------------------------------------------------+
-```
+Welcome to the completed fourth module of **SarcasTone: Multimodal Sarcasm Detection Using Textual Semantics and Speech Prosody**.
 
 ---
 
-## 📁 Member 4 Directory Structure
+## Architecture & Integration Overview
+
+Member 4 unifies the preceding three upstream modules into a full-stack, research-grade production system:
+- **Upstream Integration**:
+  - `member1_text/`: Text span-pooling encoder, normalization, and ASR transcription.
+  - `member2_audio/`: Wav2Vec 2.0 acoustic representations, 32 prosodic descriptors, and 6-dimensional signal quality checks.
+  - `member3_fusion/`: Bidirectional stacked cross-attention, Prosodic-Semantic Incongruence Dissonance (PSID), and confidence-gated fusion.
+- **Member 4 Modules**:
+  - `backend/`: Production FastAPI server supporting file uploads, validation, logging, and REST endpoints.
+  - `frontend/`: Interactive Streamlit dashboard with live audio recording, F0 pitch/energy plotting, and XAI token/acoustic drivers.
+  - `xai/`: Axiomatic Captum Integrated Gradients, prosodic feature attributions, and predictive entropy calibration.
+  - `experiments/`: Robustness suite evaluating 8 real-world noise, degradation, and dropout conditions.
+  - `research/`: Academic literature review and complete paper draft with verified DOIs and empirical benchmark tables.
+  - `docker/` & `deployment/`: Production Dockerfile, docker-compose, and deployment instructions.
+
+---
+
+## Directory Layout
 
 ```
 member4/
 ├── backend/
-│   ├── config.py             # System & model configuration loader
-│   ├── schemas.py            # Complete Pydantic schemas (PredictRequest, Response, XAI)
-│   ├── pipeline.py           # Core MultimodalPipeline integrating Members 1, 2, 3
-│   ├── main.py               # Production FastAPI REST application with 6 endpoints
-│   ├── logs/
-│   │   └── predictions.jsonl # Append-only audit prediction log
-│   └── xai/                  # Explainable AI Suite
-│       ├── text_attribution.py     # Captum Integrated Gradients & token saliency
-│       ├── acoustic_attribution.py # Prosody feature attributions & z-score divergences
-│       ├── gating_visualization.py # Adaptive confidence gating weights & explanations
-│       ├── uncertainty.py          # Predictive entropy, temperature calibration, bounds
-│       └── error_analysis.py       # Incongruence diagnosis & case-by-case reasoning
-├── frontend/
-│   └── app.py                # Polished 12-feature Streamlit Dashboard with audio/mic
-├── research/
-│   ├── literature_review.md  # Comprehensive literature review of multimodal sarcasm
-│   ├── research_questions.md # Formal testable research questions & hypotheses (RQ1-3)
-│   └── paper/
-│       ├── paper.md          # Full academic research paper
-│       └── bibliography.bib  # BibTeX citations with verified DOIs
-├── reports/
-│   ├── benchmark/
-│   │   └── benchmark_report.md     # 5-variant ablation study on MUStARD (81.4% Acc)
-│   └── robustness/
-│       ├── robustness_report.md    # 8-dimension environmental stress-testing report
-│       └── robustness_report.json  # Raw evaluation metrics across noise levels
-├── experiments/
-│   └── robustness/
-│       └── run_robustness.py # Executable 8-dimension stress test script
-├── mlops/
-│   └── tracker.py            # MLflow experiment tracker and artifact logger
-├── deployment/
-│   ├── DEPLOYMENT.md         # Production deployment guide (Local, Docker, Colab, Cloud)
-│   └── deploy.sh             # One-click startup script
-├── docker/
-│   ├── Dockerfile            # Backend container
-│   ├── Dockerfile.frontend   # Frontend Streamlit container
-│   └── docker-compose.yml    # Multi-container orchestration
+│   ├── __init__.py
+│   ├── main.py            # FastAPI production application
+│   ├── pipeline.py        # 4-way MultimodalPipeline orchestrator
+│   └── schemas.py         # Pydantic request/response schemas
 ├── configs/
-│   └── system_config.yaml    # Unified system configuration
-└── tests/
-    ├── test_backend_api.py   # API integration tests
-    ├── test_pipeline.py      # Multimodal pipeline tests
-    └── test_xai.py           # Explainability & uncertainty tests
+│   └── system_config.yaml # Central system & interface contract config
+├── deployment/
+│   └── DEPLOYMENT.md      # Exact commands for local, Docker, & Colab
+├── docker/
+│   ├── Dockerfile         # Multi-stage production container build
+│   └── entrypoint.sh      # Service startup script
+├── experiments/
+│   ├── __init__.py
+│   └── robustness.py      # Automated 8-scenario stress-testing suite
+├── fixtures/
+│   └── preset_sheldon_sarcastic.wav  # Preset test sample
+├── frontend/
+│   └── app.py             # Full-featured Streamlit dashboard
+├── mlops/
+│   ├── __init__.py
+│   └── tracking.py        # MLflow experiment tracking & model versioning
+├── reports/
+│   ├── robustness_report.json # Benchmark results JSON
+│   └── robustness_report.md   # Rendered Markdown robustness report
+├── research/
+│   ├── literature_review.md   # In-depth literature review & verified bibliography
+│   └── paper_draft.md         # Full publication-ready research paper
+├── tests/
+│   ├── __init__.py
+│   └── test_api.py        # Comprehensive FastAPI integration tests
+├── docker-compose.yml     # Multi-container orchestration
+├── README.md              # Module documentation
+└── requirements.txt       # Locked dependencies
 ```
 
 ---
 
-## 🚀 Quickstart & Execution Commands
+## Quickstart Commands
 
-### 1. Run 3-Way Sync Verification
-Verify that Member 1, Member 2, Member 3, and Member 4 are aligned on all contracts:
+### 1. Verify 4-Way Synchronization
 ```bash
-PYTHONPATH=. python3.11 verify_all_members_sync.py
+python verify_all_members_sync.py
 ```
 
-### 2. Start Backend REST API Server
+### 2. Run API Integration Tests
 ```bash
-PYTHONPATH=. python3.11 -m uvicorn member4.backend.main:app --host 0.0.0.0 --port 8000 --reload
-```
-- Swagger API Docs: `http://localhost:8000/docs`
-- Healthcheck: `http://localhost:8000/health`
-
-### 3. Launch Interactive Streamlit Dashboard
-```bash
-PYTHONPATH=. streamlit run member4/frontend/app.py --server.port 8501
-```
-- Access in browser: `http://localhost:8501`
-
-### 4. Run Complete Unit Test Suite
-```bash
-PYTHONPATH=. python3.11 -m unittest discover -s member4/tests -v
+pytest member4/tests/test_api.py -v
 ```
 
-### 5. Run Robustness Stress Suite
+### 3. Launch Backend
 ```bash
-PYTHONPATH=. python3.11 member4/experiments/robustness/run_robustness.py
+uvicorn member4.backend.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
----
-
-## 📊 Key Experimental Findings (MUStARD Benchmark)
-
-- **Overall Accuracy**: **81.4%** (Full SarcasTone with PSID + Gating).
-- **Text-Only Baseline**: 75.8% (**+5.6% gain** achieved via prosodic synergy).
-- **Audio-Only Baseline**: 68.4% (**+13.0% gain** achieved via semantic grounding).
-- **Acoustic Noise Resilience**: Under heavy 0 dB SNR noise, adaptive gating preserves **73.0% accuracy** where unconstrained cross-attention drops to 53.7%.
-- **Probability Calibration**: Temperature scaling ($T=1.25$) reduces Expected Calibration Error (ECE) from 0.092 down to **0.048**.
+### 4. Launch Frontend Dashboard
+```bash
+streamlit run member4/frontend/app.py --server.port 8501
+```

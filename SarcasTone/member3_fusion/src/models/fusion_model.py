@@ -129,6 +129,7 @@ class SarcasToneFusionModel(nn.Module):
         gating_enabled: bool = True,
         text_available: bool = True,
         audio_available_default: bool = True,
+        include_prosody_in_classifier: bool = True,
     ) -> None:
         super().__init__()
 
@@ -150,6 +151,7 @@ class SarcasToneFusionModel(nn.Module):
         self.gating_enabled       = gating_enabled
         self.text_available_flag  = text_available
         self.audio_available_default = audio_available_default
+        self.include_prosody_in_classifier = include_prosody_in_classifier
 
         # ------------------------------------------------------------------ #
         # 1. Input projection layers (bring encoder outputs to fusion_hidden)
@@ -250,7 +252,10 @@ class SarcasToneFusionModel(nn.Module):
             classifier_in_dim = fusion_hidden
 
         # Disagreement, prosody, and acoustic-full vectors appended.
-        classifier_in_dim += disagree_in + prosody_out + acou_out
+        if self.include_prosody_in_classifier:
+            classifier_in_dim += disagree_in + prosody_out + acou_out
+        else:
+            classifier_in_dim += disagree_in + acou_out
 
         # ------------------------------------------------------------------ #
         # 9. Residual projection + normalisation
@@ -348,6 +353,12 @@ class SarcasToneFusionModel(nn.Module):
         audio_emb_raw   = batch["audio_embedding"].to(device)    # [B, AUDIO_HIDDEN]
         audio_avail     = batch["audio_available"].to(device)    # [B] bool
         prosody         = batch["prosody"].to(device)             # [B, PROSODY_DIM]
+        if batch["acoustic_full"].shape[1] != self.acoustic_dim:
+            if batch["acoustic_full"].shape[1] > self.acoustic_dim:
+                batch["acoustic_full"] = batch["acoustic_full"][:, :self.acoustic_dim]
+            else:
+                diff = self.acoustic_dim - batch["acoustic_full"].shape[1]
+                batch["acoustic_full"] = torch.nn.functional.pad(batch["acoustic_full"], (0, diff))
         acoustic_full_v = batch["acoustic_full"].to(device)      # [B, acoustic_dim]
         quality         = batch["quality"].to(device)             # [B, QUALITY_DIM]
         quality_ok      = batch["quality_ok"].to(device)          # [B] bool
@@ -489,7 +500,10 @@ class SarcasToneFusionModel(nn.Module):
         # ------------------------------------------------------------------ #
         # 8. Assemble classifier input
         # ------------------------------------------------------------------ #
-        parts = [fused, prosody_proj_out, acoustic_proj_out]
+        if self.include_prosody_in_classifier:
+            parts = [fused, prosody_proj_out, acoustic_proj_out]
+        else:
+            parts = [fused, acoustic_proj_out]
         if self.psid_enabled and disagree_vec.shape[-1] > 0:
             parts.append(disagree_vec)
         classifier_input = torch.cat(parts, dim=-1)   # [B, classifier_in_dim]
@@ -547,10 +561,18 @@ class SarcasToneFusionModel(nn.Module):
     ) -> "SarcasToneFusionModel":
         directory = Path(directory)
         config    = json.loads((directory / "config.json").read_text(encoding="utf-8"))
-        model     = cls(**config)
         state     = torch.load(
             directory / "model.pt", map_location=device or "cpu"
         )
+        if "res_proj.0.weight" in state:
+            in_dim = state["res_proj.0.weight"].shape[1]
+            if in_dim == 768:
+                config["include_prosody_in_classifier"] = False
+            elif in_dim == 896:
+                config["include_prosody_in_classifier"] = True
+        if "acoustic_full_proj.proj.0.weight" in state:
+            config["acoustic_dim"] = state["acoustic_full_proj.proj.0.weight"].shape[1]
+        model     = cls(**config)
         model.load_state_dict(state)
         if device:
             model.to(device)

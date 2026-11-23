@@ -207,67 +207,62 @@ def render_detector(pipe: MultimodalPipeline):
 
     with col_meta:
         st.markdown("### Utterance Metadata")
-        preset = st.radio(
-            "Quick Load Preset Audio:",
-            ["None (Upload or Record)", "Sheldon Sarcastic Sample", "General Test WAV"],
-            index=0,
-        )
-
         speaker = st.selectbox(
             "Speaker / Character:",
             ["UNKNOWN", "SHELDON", "CHANDLER", "PENNY", "LEONARD", "MONICA", "JOEY"],
-            index=0 if preset == "None (Upload or Record)" else 1,
+            index=0,
         )
 
-        def_context = "I think I solved the puzzle." if preset == "Sheldon Sarcastic Sample" else ""
         context_input = st.text_area(
             "Conversational Context (Preceding Turn):",
-            value=def_context,
+            value="",
             placeholder="Optional preceding dialogue turn (leave blank for single utterances)...",
             height=70,
         )
 
     with col_input:
         st.markdown("### Audio & Transcript Inputs")
-        audio_file = None
-        recorded_audio = None
+        audio_mode = st.radio(
+            "Select Audio Input Mode:",
+            ["🚫 No Audio (Text-Only Mode)", "🎙️ Live Microphone Recording", "📁 Audio File Upload", "⚡ Quick Preset Audio"],
+            horizontal=True,
+            index=0,
+        )
 
-        tab_upload, tab_record = st.tabs(["📁 Audio File Upload", "🎙️ Live Microphone Recording"])
-        with tab_upload:
-            uploaded_file = st.file_uploader(
+        audio_file = None
+        selected_audio_path: Optional[Path] = None
+
+        if audio_mode == "🚫 No Audio (Text-Only Mode)":
+            st.caption("ℹ️ *Text-Only Mode: Only Row 1 (Text-Only Baseline) will be evaluated. Speech, Direct Concat, and Cross-Modal Fusion require audio.*")
+        elif audio_mode == "🎙️ Live Microphone Recording":
+            if hasattr(st, "audio_input"):
+                audio_file = st.audio_input("Record Live Utterance:")
+            else:
+                st.info("Browser audio recording requires Streamlit >= 1.40. Please use file upload.")
+        elif audio_mode == "📁 Audio File Upload":
+            audio_file = st.file_uploader(
                 "Upload Audio File (WAV / MP3 / OGG):",
                 type=["wav", "mp3", "ogg", "flac"],
             )
-            if uploaded_file is not None:
-                audio_file = uploaded_file
-
-        with tab_record:
-            if hasattr(st, "audio_input"):
-                recorded_audio = st.audio_input("Record Live Utterance:")
-                if recorded_audio is not None:
-                    audio_file = recorded_audio
+        elif audio_mode == "⚡ Quick Preset Audio":
+            preset = st.selectbox("Choose Sample Audio:", ["Sheldon Sarcastic Sample", "General Test WAV"])
+            if preset == "Sheldon Sarcastic Sample":
+                p = REPO_ROOT / "member4" / "fixtures" / "preset_sheldon_sarcastic.wav"
+                if not p.is_file():
+                    p = REPO_ROOT / "member2_audio" / "tests" / "fixtures" / "test_sample.wav"
+                selected_audio_path = p
             else:
-                st.info("Browser audio recording requires Streamlit >= 1.40. Please use file upload.")
+                selected_audio_path = REPO_ROOT / "member2_audio" / "tests" / "fixtures" / "test_sample.wav"
+            st.audio(str(selected_audio_path))
 
-        def_text = "It's just a privilege to watch your mind at work." if preset == "Sheldon Sarcastic Sample" else ""
         text_input = st.text_input(
-            "Transcript (Leave blank to use automatic speech recognition):",
-            value=def_text,
+            "Transcript (Leave blank to use automatic speech recognition from audio):",
+            value="",
             placeholder="Type your utterance here, or leave blank to auto-transcribe from audio...",
         )
 
-    # Preset Audio Resolution
-    selected_audio_path: Optional[Path] = None
-    if preset == "Sheldon Sarcastic Sample":
-        p = REPO_ROOT / "member4" / "fixtures" / "preset_sheldon_sarcastic.wav"
-        if not p.is_file():
-            p = REPO_ROOT / "member2_audio" / "tests" / "fixtures" / "test_sample.wav"
-        selected_audio_path = p
-        st.audio(str(selected_audio_path))
-    elif preset == "General Test WAV":
-        selected_audio_path = REPO_ROOT / "member2_audio" / "tests" / "fixtures" / "test_sample.wav"
-        st.audio(str(selected_audio_path))
-    elif audio_file is not None:
+    # Process Uploaded or Recorded Audio
+    if audio_file is not None:
         file_name = getattr(audio_file, "name", "input.wav") or "input.wav"
         suffix = Path(file_name).suffix or ".wav"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -303,6 +298,8 @@ def render_detector(pipe: MultimodalPipeline):
                 speaker=speaker,
             )
 
+        has_audio = (selected_audio_path is not None) and res.audio_available and (res.audio_only.label != "not_provided")
+
         # -------------------------------------------------------------
         # PROMINENT ACTIVE UTTERANCE TRANSCRIPT DISPLAY CARD
         # -------------------------------------------------------------
@@ -331,6 +328,9 @@ def render_detector(pipe: MultimodalPipeline):
         )
 
         st.markdown("## 📊 4-Way Baseline & Model Comparison Summary")
+        if not has_audio:
+            st.info("ℹ️ **Text-Only Mode Active**: Audio input was omitted. Speech-Only Baseline is marked **NOT PROVIDED**, and Multimodal Fusion & Direct Concatenation are disabled because they require both speech audio and text transcript.")
+
         top_col1, top_col2, top_col3, top_col4 = st.columns(4)
 
         with top_col1:
@@ -349,12 +349,12 @@ def render_detector(pipe: MultimodalPipeline):
             )
 
         with top_col2:
-            a_lbl = res.audio_only.label if res.audio_only else "not_provided"
-            a_conf = res.audio_only.confidence if res.audio_only else 0.0
-            if a_lbl == "not_provided":
-                badge_html = '<div class="neutral-badge" style="background:#555; color:#ddd;">NOT PROVIDED (N/A)</div>'
+            if not has_audio:
+                badge_html = '<div class="neutral-badge" style="background:#3B4252; color:#D8DEE9;">NOT PROVIDED (N/A)</div>'
                 sub_text = "Audio omitted by user"
             else:
+                a_lbl = res.audio_only.label if res.audio_only else "not_provided"
+                a_conf = res.audio_only.confidence if res.audio_only else 0.0
                 badge = "sarcastic-badge" if a_lbl == "sarcastic" else "neutral-badge"
                 badge_html = f'<div class="{badge}">{a_lbl.upper()} ({a_conf*100:.1f}%)</div>'
                 sub_text = "Member 2: Wav2Vec2 + Prosody"
@@ -370,30 +370,42 @@ def render_detector(pipe: MultimodalPipeline):
             )
 
         with top_col3:
-            c_lbl = res.direct_concat.label if res.direct_concat else res.label
-            c_conf = res.direct_concat.confidence if res.direct_concat else res.confidence
-            badge = "sarcastic-badge" if c_lbl == "sarcastic" else "neutral-badge"
+            if not has_audio:
+                badge_html = '<div class="neutral-badge" style="background:#242933; color:#7B889B; border: 1px dashed #4C566A;">HIDDEN (No Audio)</div>'
+                sub_text = "Requires speech audio"
+            else:
+                c_lbl = res.direct_concat.label if res.direct_concat else res.label
+                c_conf = res.direct_concat.confidence if res.direct_concat else res.confidence
+                badge = "sarcastic-badge" if c_lbl == "sarcastic" else "neutral-badge"
+                badge_html = f'<div class="{badge}">{c_lbl.upper()} ({c_conf*100:.1f}%)</div>'
+                sub_text = "Early Feature Concat [768+768]"
             st.markdown(
                 f"""
                 <div class="metric-card" style="text-align: center;">
                     <div style="font-weight: 700; color: #ECEFF4; margin-bottom: 8px; font-size: 1rem;">3. Direct Concatenation</div>
-                    <div class="{badge}">{c_lbl.upper()} ({c_conf*100:.1f}%)</div>
-                    <div style="color: #888888; font-size: 0.8rem; margin-top: 8px;">Early Feature Concat [768+768]</div>
+                    {badge_html}
+                    <div style="color: #888888; font-size: 0.8rem; margin-top: 8px;">{sub_text}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
         with top_col4:
-            f_lbl = res.cross_modal_fusion.label if res.cross_modal_fusion else res.label
-            f_conf = res.cross_modal_fusion.confidence if res.cross_modal_fusion else res.confidence
-            badge = "sarcastic-badge" if f_lbl == "sarcastic" else "neutral-badge"
+            if not has_audio:
+                badge_html = '<div class="neutral-badge" style="background:#242933; color:#7B889B; border: 1px dashed #4C566A;">HIDDEN (No Audio)</div>'
+                sub_text = "Requires speech audio"
+            else:
+                f_lbl = res.cross_modal_fusion.label if res.cross_modal_fusion else res.label
+                f_conf = res.cross_modal_fusion.confidence if res.cross_modal_fusion else res.confidence
+                badge = "sarcastic-badge" if f_lbl == "sarcastic" else "neutral-badge"
+                badge_html = f'<div class="{badge}">{f_lbl.upper()} ({f_conf*100:.1f}%)</div>'
+                sub_text = "Cross-Attention + PSID + Gating"
             st.markdown(
                 f"""
                 <div class="metric-card" style="text-align: center;">
                     <div style="font-weight: 700; color: #ECEFF4; margin-bottom: 8px; font-size: 1rem;">4. Cross-Modal Fusion (Ours)</div>
-                    <div class="{badge}">{f_lbl.upper()} ({f_conf*100:.1f}%)</div>
-                    <div style="color: #888888; font-size: 0.8rem; margin-top: 8px;">Cross-Attention + PSID + Gating</div>
+                    {badge_html}
+                    <div style="color: #888888; font-size: 0.8rem; margin-top: 8px;">{sub_text}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -432,20 +444,19 @@ def render_detector(pipe: MultimodalPipeline):
         st.markdown("</div>", unsafe_allow_html=True)
 
         # -------------------------------------------------------------
-        # ROW 2: SPEECH-ONLY BASELINE
+        # MULTIMODAL BASELINES (ROWS 2, 3, 4) - ONLY SHOWN WHEN AUDIO IS PROVIDED
         # -------------------------------------------------------------
-        st.markdown('<div class="comparison-card">', unsafe_allow_html=True)
-        st.markdown('<div class="model-header">🎙️ ROW 2: Speech-Only Baseline (Vocal Prosody & Tone)</div>', unsafe_allow_html=True)
-        r2_col1, r2_col2, r2_col3 = st.columns([1, 1, 1])
-        with r2_col1:
-            a_obj = res.audio_only
-            a_label = a_obj.label if a_obj else "not_provided"
-            a_conf = a_obj.confidence if a_obj else 0.0
-            if a_label == "not_provided":
-                st.markdown('<div class="neutral-badge" style="background:#555; color:#eee;">AUDIO NOT PROVIDED</div>', unsafe_allow_html=True)
-                st.markdown("**Status**: Inactive (No audio input)")
-                st.caption("Upload or record audio above to evaluate pitch contour and acoustic prosody.")
-            else:
+        if has_audio:
+            # -------------------------------------------------------------
+            # ROW 2: SPEECH-ONLY BASELINE
+            # -------------------------------------------------------------
+            st.markdown('<div class="comparison-card">', unsafe_allow_html=True)
+            st.markdown('<div class="model-header">🎙️ ROW 2: Speech-Only Baseline (Vocal Prosody & Tone)</div>', unsafe_allow_html=True)
+            r2_col1, r2_col2, r2_col3 = st.columns([1, 1, 1])
+            with r2_col1:
+                a_obj = res.audio_only
+                a_label = a_obj.label if a_obj else "not_provided"
+                a_conf = a_obj.confidence if a_obj else 0.0
                 badge = "sarcastic-badge" if a_label == "sarcastic" else "neutral-badge"
                 st.markdown(f'<div class="{badge}">Prediction: {a_label.upper()}</div>', unsafe_allow_html=True)
                 st.markdown(f"**Confidence**: {a_conf*100:.1f}%")
@@ -455,91 +466,103 @@ def render_detector(pipe: MultimodalPipeline):
                     st.caption(f"Sarcastic: {p_sarc*100:.1f}% | Non-Sarcastic: {(1-p_sarc)*100:.1f}%")
                 st.info("Evaluates speech prosody, pitch inflection, and tempo alone.")
 
-        with r2_col2:
-            st.markdown("**Audio / Speech Transcript**")
-            audio_transcript = a_obj.transcript if (a_obj and a_obj.transcript) else res.transcript
-            if not audio_transcript or audio_transcript == "No audio provided":
-                audio_transcript = res.transcript or "No transcript or audio provided"
-            st.markdown(f'<div class="transcript-box">{audio_transcript}</div>', unsafe_allow_html=True)
-            if not res.transcript_is_ground_truth and res.transcript:
-                st.caption("Auto-transcribed via Whisper ASR from speech.")
-            else:
-                st.caption("Utterance transcript used for cross-modal comparison.")
+            with r2_col2:
+                st.markdown("**Audio / Speech Transcript**")
+                audio_transcript = a_obj.transcript if (a_obj and a_obj.transcript) else res.transcript
+                if not audio_transcript or audio_transcript == "No audio provided":
+                    audio_transcript = res.transcript or "No transcript or audio provided"
+                st.markdown(f'<div class="transcript-box">{audio_transcript}</div>', unsafe_allow_html=True)
+                if not res.transcript_is_ground_truth and res.transcript:
+                    st.caption("Auto-transcribed via Whisper ASR from speech.")
+                else:
+                    st.caption("Utterance transcript used for cross-modal comparison.")
 
-        with r2_col3:
-            st.markdown("**Top Prosodic Drivers**")
-            if a_label == "not_provided":
-                st.markdown('<div class="transcript-box" style="font-size:0.85rem; color:#888;">Prosody drivers inactive.<br>Provide audio to extract pitch & energy.</div>', unsafe_allow_html=True)
-            else:
+            with r2_col3:
+                st.markdown("**Top Prosodic Drivers**")
                 feats = [a.feature_name for a in res.explanation.top_acoustic_features]
                 imps = [a.importance for a in res.explanation.top_acoustic_features]
                 if feats:
                     b64_img = plot_acoustic_importance_b64(feats, imps)
                     st.image(f"data:image/png;base64,{b64_img}", use_container_width=True)
                 st.caption("Sensitivity ranking over 32 handcrafted Praat/Librosa prosodic parameters.")
-        st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
-        # -------------------------------------------------------------
-        # ROW 3: DIRECT CONCATENATION BASELINE
-        # -------------------------------------------------------------
-        st.markdown('<div class="comparison-card">', unsafe_allow_html=True)
-        st.markdown('<div class="model-header">🔗 ROW 3: Direct Concatenation Baseline (Early/Linear Fusion)</div>', unsafe_allow_html=True)
-        r3_col1, r3_col2 = st.columns([1, 2])
-        with r3_col1:
-            c_obj = res.direct_concat
-            c_label = c_obj.label if c_obj else res.label
-            c_conf = c_obj.confidence if c_obj else res.confidence
-            badge = "sarcastic-badge" if c_label == "sarcastic" else "neutral-badge"
-            st.markdown(f'<div class="{badge}">Prediction: {c_label.upper()}</div>', unsafe_allow_html=True)
-            st.markdown(f"**Confidence**: {c_conf*100:.1f}%")
-            if c_obj:
-                p_sarc = c_obj.probabilities.get("sarcastic", 0.5)
-                st.progress(float(p_sarc))
-                st.caption(f"Sarcastic: {p_sarc*100:.1f}% | Non-Sarcastic: {(1-p_sarc)*100:.1f}%")
+            # -------------------------------------------------------------
+            # ROW 3: DIRECT CONCATENATION BASELINE
+            # -------------------------------------------------------------
+            st.markdown('<div class="comparison-card">', unsafe_allow_html=True)
+            st.markdown('<div class="model-header">🔗 ROW 3: Direct Concatenation Baseline (Early/Linear Fusion)</div>', unsafe_allow_html=True)
+            r3_col1, r3_col2 = st.columns([1, 2])
+            with r3_col1:
+                c_obj = res.direct_concat
+                c_label = c_obj.label if c_obj else res.label
+                c_conf = c_obj.confidence if c_obj else res.confidence
+                badge = "sarcastic-badge" if c_label == "sarcastic" else "neutral-badge"
+                st.markdown(f'<div class="{badge}">Prediction: {c_label.upper()}</div>', unsafe_allow_html=True)
+                st.markdown(f"**Confidence**: {c_conf*100:.1f}%")
+                if c_obj:
+                    p_sarc = c_obj.probabilities.get("sarcastic", 0.5)
+                    st.progress(float(p_sarc))
+                    st.caption(f"Sarcastic: {p_sarc*100:.1f}% | Non-Sarcastic: {(1-p_sarc)*100:.1f}%")
 
-        with r3_col2:
-            st.markdown(r"**Direct Concatenation Architecture [$z_{text} \,;\, z_{audio}$]**")
+            with r3_col2:
+                st.markdown(r"**Direct Concatenation Architecture [$z_{text} \,;\, z_{audio}$]**")
+                st.markdown(
+                    """
+                    - **Formulation**: Directly concatenates the RoBERTa text pool (768-d) and Wav2Vec2 audio pool (768-d) into a static 1536-d vector before classification.
+                    - **Limitation**: Does not model word-to-frame cross-modal attention and cannot explicitly detect semantic-emotional conflict (PSID).
+                    """
+                )
+            st.markdown("</div>", unsafe_allow_html=True)
+
+            # -------------------------------------------------------------
+            # ROW 4: CROSS-MODAL FUSION (OUR PROPOSED ARCHITECTURE)
+            # -------------------------------------------------------------
+            st.markdown('<div class="comparison-card" style="border: 2px solid #4A90E2;">', unsafe_allow_html=True)
+            st.markdown('<div class="model-header" style="color: #4A90E2;">🎭 ROW 4: Cross-Modal Fusion (Our Proposed SarcasTone Model)</div>', unsafe_allow_html=True)
+            r4_col1, r4_col2, r4_col3 = st.columns([1, 1, 1])
+            with r4_col1:
+                f_obj = res.cross_modal_fusion
+                f_label = f_obj.label if f_obj else res.label
+                f_conf = f_obj.confidence if f_obj else res.confidence
+                badge = "sarcastic-badge" if f_label == "sarcastic" else "neutral-badge"
+                st.markdown(f'<div class="{badge}">Final Prediction: {f_label.upper()}</div>', unsafe_allow_html=True)
+                st.markdown(f"**Calibrated Confidence**: {f_conf*100:.1f}%")
+                if f_obj:
+                    p_sarc = f_obj.probabilities.get("sarcastic", 0.5)
+                    st.progress(float(p_sarc))
+                    st.caption(f"Sarcastic: {p_sarc*100:.1f}% | Non-Sarcastic: {(1-p_sarc)*100:.1f}%")
+                st.markdown(f"**Predictive Entropy**: `{res.entropy:.3f} nats`")
+
+            with r4_col2:
+                st.markdown("**PSID Dissonance & Gating Breakdown**")
+                st.metric("PSID Incongruence Score", f"{res.psid_dissonance_score:.3f}")
+                b64_gating = plot_modality_gating_b64(res.modality_weights["text"], res.modality_weights["audio"])
+                st.image(f"data:image/png;base64,{b64_gating}", width=260)
+
+            with r4_col3:
+                st.markdown("**Speech Prosody & Pitch/Energy Contours**")
+                b64_pe = plot_pitch_energy_contour_b64()
+                st.image(f"data:image/png;base64,{b64_pe}", use_container_width=True)
+                st.caption("Fundamental frequency ($F_0$) modulation and root-mean-square loudness envelope.")
+
+            st.markdown(f"**Multimodal Narrative Summary**: *{res.explanation.narrative}*")
+            st.markdown("</div>", unsafe_allow_html=True)
+        else:
             st.markdown(
                 """
-                - **Formulation**: Directly concatenates the RoBERTa text pool (768-d) and Wav2Vec2 audio pool (768-d) into a static 1536-d vector before classification.
-                - **Limitation**: Does not model word-to-frame cross-modal attention and cannot explicitly detect semantic-emotional conflict (PSID).
-                """
+                <div style="background-color: #1A1E24; border-radius: 8px; padding: 22px 28px; border: 1px dashed #3B4252; color: #ECEFF4; text-align: center; margin: 25px 0;">
+                    <div style="font-size: 1.15rem; font-weight: 700; color: #4A90E2; margin-bottom: 8px;">
+                        ℹ️ Multimodal Baselines (Speech-Only, Direct Concat, Cross-Modal Fusion) Hidden
+                    </div>
+                    <div style="font-size: 0.92rem; color: #A0AEC0; line-height: 1.5; max-width: 650px; margin: 0 auto;">
+                        Audio was not provided. Direct Concatenation and Cross-Modal Attention strictly require both <b>Speech Audio</b> and <b>Text Transcript</b> modalities.<br>
+                        To activate all 4 baselines, select <b>'Live Microphone'</b>, <b>'Upload Audio File'</b>, or <b>'Quick Preset'</b> above.
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        # -------------------------------------------------------------
-        # ROW 4: CROSS-MODAL FUSION (OUR PROPOSED ARCHITECTURE)
-        # -------------------------------------------------------------
-        st.markdown('<div class="comparison-card" style="border: 2px solid #4A90E2;">', unsafe_allow_html=True)
-        st.markdown('<div class="model-header" style="color: #4A90E2;">🎭 ROW 4: Cross-Modal Fusion (Our Proposed SarcasTone Model)</div>', unsafe_allow_html=True)
-        r4_col1, r4_col2, r4_col3 = st.columns([1, 1, 1])
-        with r4_col1:
-            f_obj = res.cross_modal_fusion
-            f_label = f_obj.label if f_obj else res.label
-            f_conf = f_obj.confidence if f_obj else res.confidence
-            badge = "sarcastic-badge" if f_label == "sarcastic" else "neutral-badge"
-            st.markdown(f'<div class="{badge}">Final Prediction: {f_label.upper()}</div>', unsafe_allow_html=True)
-            st.markdown(f"**Calibrated Confidence**: {f_conf*100:.1f}%")
-            if f_obj:
-                p_sarc = f_obj.probabilities.get("sarcastic", 0.5)
-                st.progress(float(p_sarc))
-                st.caption(f"Sarcastic: {p_sarc*100:.1f}% | Non-Sarcastic: {(1-p_sarc)*100:.1f}%")
-            st.markdown(f"**Predictive Entropy**: `{res.entropy:.3f} nats`")
-
-        with r4_col2:
-            st.markdown("**PSID Dissonance & Gating Breakdown**")
-            st.metric("PSID Incongruence Score", f"{res.psid_dissonance_score:.3f}")
-            b64_gating = plot_modality_gating_b64(res.modality_weights["text"], res.modality_weights["audio"])
-            st.image(f"data:image/png;base64,{b64_gating}", width=260)
-
-        with r4_col3:
-            st.markdown("**Speech Prosody & Pitch/Energy Contours**")
-            b64_pe = plot_pitch_energy_contour_b64()
-            st.image(f"data:image/png;base64,{b64_pe}", use_container_width=True)
-            st.caption("Fundamental frequency ($F_0$) modulation and root-mean-square loudness envelope.")
-
-        st.markdown(f"**Multimodal Narrative Summary**: *{res.explanation.narrative}*")
-        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_comparison(pipe: MultimodalPipeline):

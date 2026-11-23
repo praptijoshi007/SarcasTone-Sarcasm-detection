@@ -347,9 +347,12 @@ def extract_features(audio_path: str | Path) -> dict[str, Any]:
         features.update(mean_std(zcr, "zero_crossing_rate"))
         features.update(mean_std(rms, "rms_energy"))
         features.update(mean_std(pitch, "pitch_f0"))
-    else:
-        # Fallback populate prosody
+
+    # Always merge prosodic features (speaking_rate_proxy, pause_ratio, f0_std, etc.)
+    try:
         _, pdict = extract_prosody_features(audio_path)
         features.update(pdict)
+    except Exception:
+        pass
 
     return features

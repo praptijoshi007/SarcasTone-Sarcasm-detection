@@ -203,62 +203,84 @@ def render_detector(pipe: MultimodalPipeline):
     st.markdown('<div class="main-title">Interactive Sarcasm Detector (4-Way Comparative Evaluation)</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Compares: 1. Text-Only Baseline, 2. Speech-Only Baseline, 3. Direct Concatenation, and 4. Cross-Modal Fusion</div>', unsafe_allow_html=True)
 
-    col_input, col_meta = st.columns([2, 1])
+    # Load 50 Benchmark Samples Manifest
+    manifest_file = REPO_ROOT / "member4" / "fixtures" / "samples" / "samples_manifest.json"
+    manifest_data = []
+    if manifest_file.is_file():
+        try:
+            with open(manifest_file, "r", encoding="utf-8") as f:
+                manifest_data = json.load(f)
+        except Exception:
+            pass
 
-    with col_meta:
-        st.markdown("### Utterance Metadata")
-        speaker = st.selectbox(
-            "Speaker / Character:",
-            ["UNKNOWN", "SHELDON", "CHANDLER", "PENNY", "LEONARD", "MONICA", "JOEY"],
-            index=0,
-        )
+    st.markdown("### 🎙️ Audio Input Modality & Source")
+    audio_mode = st.radio(
+        "Select Audio Input Mode:",
+        [
+            "🚫 No Audio (Text-Only Mode)",
+            "⚡ Quick Preset Audio (50 Benchmark Dataset Samples)",
+            "🎙️ Live Microphone Recording",
+            "📁 Audio File Upload"
+        ],
+        horizontal=True,
+        index=0,
+    )
 
-        context_input = st.text_area(
-            "Conversational Context (Preceding Turn):",
-            value="",
-            placeholder="Optional preceding dialogue turn (leave blank for single utterances)...",
-            height=70,
-        )
+    audio_file = None
+    selected_audio_path: Optional[Path] = None
+    def_text = ""
+    def_context = ""
+    def_speaker = "UNKNOWN"
 
-    with col_input:
-        st.markdown("### Audio & Transcript Inputs")
-        audio_mode = st.radio(
-            "Select Audio Input Mode:",
-            ["🚫 No Audio (Text-Only Mode)", "🎙️ Live Microphone Recording", "📁 Audio File Upload", "⚡ Quick Preset Audio"],
-            horizontal=True,
-            index=0,
-        )
+    if audio_mode == "🚫 No Audio (Text-Only Mode)":
+        st.caption("ℹ️ *Text-Only Mode: Only Row 1 (Text-Only Baseline) will be evaluated. Speech, Direct Concat, and Cross-Modal Fusion require audio.*")
 
-        audio_file = None
-        selected_audio_path: Optional[Path] = None
-
-        if audio_mode == "🚫 No Audio (Text-Only Mode)":
-            st.caption("ℹ️ *Text-Only Mode: Only Row 1 (Text-Only Baseline) will be evaluated. Speech, Direct Concat, and Cross-Modal Fusion require audio.*")
-        elif audio_mode == "🎙️ Live Microphone Recording":
-            if hasattr(st, "audio_input"):
-                audio_file = st.audio_input("Record Live Utterance:")
-            else:
-                st.info("Browser audio recording requires Streamlit >= 1.40. Please use file upload.")
-        elif audio_mode == "📁 Audio File Upload":
-            audio_file = st.file_uploader(
-                "Upload Audio File (WAV / MP3 / OGG):",
-                type=["wav", "mp3", "ogg", "flac"],
+    elif "Quick Preset Audio" in audio_mode:
+        f_col1, f_col2 = st.columns([1, 2])
+        with f_col1:
+            filter_preset = st.radio(
+                "Filter Benchmark Presets:",
+                ["All 50 Samples", "🎭 Sarcastic Only (25)", "😊 Non-Sarcastic Only (25)"],
+                horizontal=True,
             )
-        elif audio_mode == "⚡ Quick Preset Audio":
-            preset = st.selectbox("Choose Sample Audio:", ["Sheldon Sarcastic Sample", "General Test WAV"])
-            if preset == "Sheldon Sarcastic Sample":
-                p = REPO_ROOT / "member4" / "fixtures" / "preset_sheldon_sarcastic.wav"
-                if not p.is_file():
-                    p = REPO_ROOT / "member2_audio" / "tests" / "fixtures" / "test_sample.wav"
-                selected_audio_path = p
+        with f_col2:
+            if "Sarcastic Only" in filter_preset:
+                active_samples = [s for s in manifest_data if s["label"] == "sarcastic"]
+            elif "Non-Sarcastic Only" in filter_preset:
+                active_samples = [s for s in manifest_data if s["label"] == "non_sarcastic"]
             else:
-                selected_audio_path = REPO_ROOT / "member2_audio" / "tests" / "fixtures" / "test_sample.wav"
-            st.audio(str(selected_audio_path))
+                active_samples = manifest_data
 
-        text_input = st.text_input(
-            "Transcript (Leave blank to use automatic speech recognition from audio):",
-            value="",
-            placeholder="Type your utterance here, or leave blank to auto-transcribe from audio...",
+            if active_samples:
+                chosen_idx = st.selectbox(
+                    f"Choose Audio Sample from MUStARD Dataset ({len(active_samples)} Available):",
+                    range(len(active_samples)),
+                    format_func=lambda i: active_samples[i]["display_name"],
+                    key="preset_select_box"
+                )
+                chosen_item = active_samples[chosen_idx]
+                sample_wav = REPO_ROOT / "member4" / "fixtures" / "samples" / f"{chosen_item['id']}.wav"
+                if not sample_wav.is_file():
+                    sample_wav = Path(chosen_item["audio_path"])
+                selected_audio_path = sample_wav
+                st.audio(str(selected_audio_path))
+
+                def_text = chosen_item.get("utterance", "")
+                def_context = chosen_item.get("context", "")
+                def_speaker = chosen_item.get("speaker", "UNKNOWN")
+            else:
+                st.warning("No samples found in manifest.")
+
+    elif audio_mode == "🎙️ Live Microphone Recording":
+        if hasattr(st, "audio_input"):
+            audio_file = st.audio_input("Record Live Utterance from Microphone:")
+        else:
+            st.info("Browser audio recording requires Streamlit >= 1.40. Please use file upload.")
+
+    elif audio_mode == "📁 Audio File Upload":
+        audio_file = st.file_uploader(
+            "Upload Audio File (WAV / MP3 / OGG):",
+            type=["wav", "mp3", "ogg", "flac"],
         )
 
     # Process Uploaded or Recorded Audio
@@ -284,6 +306,34 @@ def render_detector(pipe: MultimodalPipeline):
             selected_audio_path = raw_tmp_path
 
         st.audio(audio_file.getvalue())
+
+    st.markdown("---")
+    col_input, col_meta = st.columns([2, 1])
+
+    with col_meta:
+        st.markdown("### Utterance Metadata")
+        speaker_list = ["UNKNOWN", "SHELDON", "CHANDLER", "PENNY", "LEONARD", "MONICA", "JOEY"]
+        spk_idx = speaker_list.index(def_speaker) if def_speaker in speaker_list else 0
+        speaker = st.selectbox(
+            "Speaker / Character:",
+            speaker_list,
+            index=spk_idx,
+        )
+
+        context_input = st.text_area(
+            "Conversational Context (Preceding Turn):",
+            value=def_context,
+            placeholder="Optional preceding dialogue turn (leave blank for single utterances)...",
+            height=70,
+        )
+
+    with col_input:
+        st.markdown("### Utterance Transcript")
+        text_input = st.text_input(
+            "Transcript (Leave blank to use automatic speech recognition from audio):",
+            value=def_text,
+            placeholder="Type your utterance here, or leave blank to auto-transcribe from audio...",
+        )
 
     st.markdown("---")
     analyze_btn = st.button("🚀 Analyze All 4 Models & Compare", type="primary", use_container_width=True)
